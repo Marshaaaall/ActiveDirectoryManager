@@ -6,7 +6,7 @@ import logging
 import unicodedata
 import re
 from config import DOMINIO_AD
-from ldap_utils import conectar_ldap, create_user
+from ldap_utils import conectar_ldap
 from ldap3 import MODIFY_REPLACE, MODIFY_ADD
 
 
@@ -21,7 +21,9 @@ class MassImportFrame(ttk.Frame):
         self.template_dns = []
         self.template_ous = []
         self.template_logins = []
-        self.import_results = []  # Para armazenar os resultados da importação
+        self.import_results = []
+        self.template_object_classes = []
+        self.template_member_of = []
 
         self._setup_ui()
 
@@ -228,12 +230,28 @@ class MassImportFrame(ttk.Frame):
         # Obter a OU do usuário espelho
         try:
             template_dn = self.template_dns[selected_index]
-            container_dn = ",".join(template_dn.split(",")[1:])
-            self.mirror_user_ou = container_dn
+            
+            # Extrair a OU corretamente do DN
+            dn_parts = template_dn.split(',')
+            ou_parts = [part for part in dn_parts if part.startswith('OU=')]
+            self.mirror_user_ou = ','.join(ou_parts)
             
             if not self.mirror_user_ou:
                 messagebox.showerror("Erro", f"Não foi possível obter a OU do usuário espelho '{template_input}'")
                 return
+            
+            # Buscar informações detalhadas do usuário espelho
+            self.conn_mass.search(
+                search_base=template_dn,
+                search_filter='(objectClass=user)',
+                attributes=['objectClass', 'memberOf']
+            )
+            
+            if self.conn_mass.entries:
+                template_entry = self.conn_mass.entries[0]
+                self.template_object_classes = [str(oc) for oc in template_entry.objectClass.values]
+                self.template_member_of = template_entry.memberOf.values if hasattr(template_entry, 'memberOf') else []
+            
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao obter OU do usuário espelho: {e}")
             return
@@ -241,7 +259,7 @@ class MassImportFrame(ttk.Frame):
         self.progress_var.set(0)
         self.progress_bar["maximum"] = len(self.import_data)
         self.import_status.config(text="Iniciando importação...", foreground="blue")
-        self.import_results = []  # Limpa resultados anteriores
+        self.import_results = []
 
         threading.Thread(target=self._thread_import, daemon=True).start()
 
@@ -285,7 +303,7 @@ class MassImportFrame(ttk.Frame):
             self.root.after(0, lambda cur=i+1, s=success, er=errors, st=status, idx=i: self._update_progress_and_tree(cur, s, er, total, idx, st))
 
         self.root.after(0, lambda: self.import_status.config(text="✅ Importação concluída!", foreground="green"))
-        self.root.after(1000, self.show_import_results)  # Mostra resultados após 1 segundo
+        self.root.after(1000, self.show_import_results)
 
     def _update_progress_and_tree(self, current, success, errors, total, row_index, status):
         self.progress_var.set(current)
@@ -358,20 +376,11 @@ class MassImportFrame(ttk.Frame):
         """Cria um usuário na OU especificada"""
         try:
             full_name = f"{first_name} {last_name}"
-            new_dn = f"cn={full_name},{self.mirror_user_ou}"
+            new_dn = f"CN={full_name},{self.mirror_user_ou}"
 
-            # Buscar modelo no AD para copiar atributos
-            template_dn = self.template_dns[0]  # Usa o primeiro usuário da lista como modelo
-            self.conn_mass.search(template_dn, '(objectClass=user)', attributes=['*', 'memberOf'])
-            if not self.conn_mass.entries:
-                raise Exception("Usuário espelho não encontrado.")
-            
-            template = self.conn_mass.entries[0]
-            object_classes = [str(oc) for oc in template.objectClass.values]
-
-            # Criar usuário
+            # Criar usuário com as classes de objeto do usuário espelho
             attributes = {
-                'objectClass': object_classes,
+                'objectClass': self.template_object_classes,
                 'cn': full_name,
                 'givenName': first_name,
                 'sn': last_name,
@@ -379,31 +388,37 @@ class MassImportFrame(ttk.Frame):
                 'sAMAccountName': old_username,
                 'userPrincipalName': f"{username}@motivabpo.com.br",
                 'mail': f"{username}@motivabpo.com.br",
-                'userAccountControl': 544,
+                'userAccountControl': 544,  # Conta desativada inicialmente
                 'name': full_name,
-                'instanceType': '4',
-                'accountExpires': '0',
             }
 
             if not self.conn_mass.add(dn=new_dn, attributes=attributes):
-                raise Exception(f"Erro ao criar usuário: {self.conn_mass.last_error}")
+                error_msg = f"Erro ao criar usuário: {self.conn_mass.last_error}"
+                logging.error(error_msg)
+                raise Exception(error_msg)
 
             logging.info(f"Usuário criado: {new_dn}")
 
             # Definir senha
             password_value = '!@123456Aa'.encode('utf-16-le')
-            self.conn_mass.modify(new_dn, {'unicodePwd': [(MODIFY_REPLACE, [password_value])]})
+            if not self.conn_mass.modify(new_dn, {'unicodePwd': [(MODIFY_REPLACE, [password_value])]}):
+                error_msg = f"Erro ao definir senha: {self.conn_mass.last_error}"
+                logging.error(error_msg)
+                raise Exception(error_msg)
 
             # Ativar conta
-            self.conn_mass.modify(new_dn, {
-                'userAccountControl': [(MODIFY_REPLACE, [512])],
-                'pwdLastSet': [(MODIFY_REPLACE, [0])]
-            })
+            if not self.conn_mass.modify(new_dn, {
+                'userAccountControl': [(MODIFY_REPLACE, [512])],  # Conta ativada
+                'pwdLastSet': [(MODIFY_REPLACE, [0])]  # Deve alterar senha no próximo logon
+            }):
+                error_msg = f"Erro ao ativar conta: {self.conn_mass.last_error}"
+                logging.error(error_msg)
+                raise Exception(error_msg)
 
             # Copiar grupos do usuário modelo
-            if hasattr(template, 'memberOf') and template.memberOf.values:
-                for grupo_dn in template.memberOf.values:
-                    self.conn_mass.modify(grupo_dn, {'member': [(MODIFY_ADD, [new_dn])]})
+            for grupo_dn in self.template_member_of:
+                if not self.conn_mass.modify(grupo_dn, {'member': [(MODIFY_ADD, [new_dn])]}):
+                    logging.warning(f"Erro ao adicionar usuário ao grupo {grupo_dn}: {self.conn_mass.last_error}")
 
             return True
 
