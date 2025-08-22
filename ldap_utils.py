@@ -1,7 +1,8 @@
 from ldap3 import Server, Connection, Tls, SIMPLE, MODIFY_REPLACE
 import ssl
-from config import DOMINIO_AD, SERVIDOR_AD
+from config import DOMINIO_AD, SERVIDOR_AD, BASE_DN
 from ldap3 import Server, Connection, MODIFY_REPLACE
+import logging
 
 # ================= Conexão LDAP =================
 def conectar_ldap(usuario, senha):
@@ -65,6 +66,30 @@ def create_user(conn, cn, surname, ou_dn, user_password, additional_attrs=None):
     except Exception as e:
         print(f"Erro criar usuário {cn}: {e}")
         return False
+
+def get_user_ou(conn, username):
+    """
+    Obtém a OU de um usuário existente no AD
+    """
+    try:
+        search_filter = f"(sAMAccountName={username})"
+        result = conn.search(
+            search_base=BASE_DN,
+            search_filter=search_filter,
+            attributes=['distinguishedName']
+        )
+        
+        if result:
+            for entry in conn.entries:
+                dn = entry.distinguishedName.value
+                # Extrai a OU do DN
+                ou_parts = [part for part in dn.split(',') if part.startswith('OU=')]
+                if ou_parts:
+                    return ou_parts[0][3:]  # Remove o 'OU=' prefix
+        return None
+    except Exception as e:
+        logging.error(f"Erro ao obter OU do usuário {username}: {e}")
+        return None
 
 # ================= Verifica status do usuário =================
 def is_account_disabled(userAccountControl):

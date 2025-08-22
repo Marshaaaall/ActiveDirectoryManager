@@ -80,7 +80,6 @@ class IndividualFrame:
         # Credenciais do TI
         ttk.Separator(self.frame, orient=tk.HORIZONTAL).grid(row=9, column=0, columnspan=2, sticky=tk.EW, pady=10)
         ttk.Label(self.frame, text="Credenciais do Grupo de TI", style="Header.TLabel").grid(row=10, column=0, columnspan=2, pady=5)
-        ttk.Label(self.frame, text=f"Utilize um usuário de um dos grupos: {', '.join(GRUPOS_PERMITIDOS)}").grid(row=11, column=0, columnspan=2, sticky=tk.W)
 
         ttk.Label(self.frame, text="Usuário de Rede:").grid(row=12, column=0, sticky=tk.W)
         user_frame = ttk.Frame(self.frame)
@@ -147,18 +146,28 @@ class IndividualFrame:
         if not parts:
             return ""
 
-        first_letter = parts[0][0] if parts[0] else ""
+        first_letter = parts[0][0]
         login_parts = [first_letter, "_"]
 
-        if len(parts) < 2:
+        # Filtrar partes relevantes (ignorar palavras com menos de 3 letras)
+        relevant_parts = [p for p in parts if len(p) >= 3]
+    
+        if not relevant_parts:
+            # Se não há partes relevantes, usa o primeiro nome preenchendo com 'x'
             base = parts[0].ljust(6, 'x')
             login_parts.append(base[:3])
             login_parts.append(base[3:6])
+        elif len(relevant_parts) < 2:
+            # Se há apenas uma parte relevante, usa ela e o primeiro nome
+            base = relevant_parts[0].ljust(6, 'x')
+            login_parts.append(base[:3])
+            login_parts.append(parts[0][:3].ljust(3, 'x'))
         else:
-            last_part = parts[-1][:3].ljust(3, 'x')
-            first_last = parts[1][:3].ljust(3, 'x')
-            login_parts.append(first_last)
-            login_parts.append(last_part)
+            # Usa o primeiro sobrenome relevante e o último sobrenome relevante
+            first_relevant = relevant_parts[1][:3].ljust(3, 'x')
+            last_relevant = relevant_parts[-1][:3].ljust(3, 'x')
+            login_parts.append(first_relevant)
+            login_parts.append(last_relevant)
 
         return ''.join(login_parts)[:20]
 

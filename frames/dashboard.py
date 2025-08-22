@@ -4,17 +4,10 @@ from ldap3 import Server, Connection, SUBTREE, Tls, NTLM, SIMPLE
 import ssl
 import logging
 from datetime import datetime, timedelta
+from config import DOMINIO_AD, SERVIDOR_AD, BASE_DN, GRUPOS_INTERNET
 from datetime import timezone
 import threading
 
-# Configurações do servidor LDAP
-DOMINIO_AD = "MOTIVA"
-SERVIDOR_AD = "10.100.0.10"
-BASE_DN = "dc=motiva,dc=matriz"
-GRUPOS_INTERNET = [
-    "g_fg_analistas_ti",
-    "Admins. do domínio",
-]
 
 class DashboardFrame(ttk.Frame):  # Agora herda de ttk.Frame
     def __init__(self, parent):

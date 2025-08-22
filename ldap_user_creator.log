@@ -1572,3 +1572,24 @@ Senha inicial: !@123456Aa (deve ser alterada no primeiro logon)
 2025-08-22 09:07:09,729 - INFO - Credenciais validadas para mover usuários
 2025-08-22 09:28:52,538 - INFO - Credenciais validadas para mover usuários
 2025-08-22 10:23:50,214 - INFO - Usuário criado: cn=Kaio Leste,OU=ASSISTENTES,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-08-22 11:32:52,093 - INFO - Conexão bem-sucedida para o usuário: k_rodbra
+2025-08-22 11:32:52,248 - INFO - 825 OUs carregadas com sucesso.
+2025-08-22 11:41:33,657 - INFO - Conexão bem-sucedida para o usuário: k_rodbra
+2025-08-22 11:41:33,773 - INFO - 825 OUs carregadas com sucesso.
+2025-08-22 11:42:27,980 - INFO - Usuário criado: cn=kaio leste,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-08-22 11:43:18,578 - INFO - Planilha 'C:/Users/k_rodbra/Downloads/Mover em massa.xlsx' carregada com 1 usuários.
+2025-08-22 11:43:36,581 - INFO - Usuário 'kaio leste' (DN: CN=kaio leste,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz) movido com sucesso para 'OU=ANALISTAS,OU=DESENVOLVIMENTO,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz'.
+2025-08-22 12:06:50,779 - INFO - Conexão bem-sucedida para o usuário: k_rodbra
+2025-08-22 12:06:50,911 - INFO - 825 OUs carregadas com sucesso.
+2025-08-22 12:06:56,721 - INFO - Planilha 'C:/Users/k_rodbra/Downloads/Mover em massa.xlsx' carregada com 1 usuários.
+2025-08-22 12:16:04,250 - ERROR - Erro criando usuário Nome                                                  Marcos
+Sobrenome                                              Lopes
+Nome Completo                                               
+Modelo           Camila Fontes De Moraes Benedito (c_morben)
+Name: 0, dtype: object: 'OU'
+2025-08-22 12:20:00,336 - ERROR - Erro criando usuário Nome                                                  Marcos
+Sobrenome                                              Lopes
+Nome Completo                                               
+Modelo           Camila Fontes De Moraes Benedito (c_morben)
+Name: 0, dtype: object: create_user() missing 1 required positional argument: 'user_password'
+2025-08-22 13:25:45,643 - INFO - Usuário criado: cn=Marcos Lopes,OU=TARDE,OU=EXTERNO,OU=OPERADORES,OU=CLARO_VENDAS,OU=OPERACAO,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
