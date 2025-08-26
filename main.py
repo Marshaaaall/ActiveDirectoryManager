@@ -4,7 +4,8 @@ from frames.dashboard import DashboardFrame
 from frames.individual import IndividualFrame
 from frames.mass_import import MassImportFrame
 from frames.move_users import MoveUsersFrame
-from frames.mass_move import MassUsersFrame 
+from frames.mass_move import MassUsersFrame
+from frames.settings import SettingsFrame
 
 class App:
     def __init__(self, root):
@@ -33,6 +34,9 @@ class App:
         
         mass_move_tab = MassUsersFrame(self.notebook, root)
         self.notebook.add(mass_move_tab, text="Movimento em Massa")
+
+        setting_tab = SettingsFrame(self.notebook, root)
+        self.notebook.add(setting_tab, text="Configurações")
 
 if __name__ == "__main__":
     root = tk.Tk()
