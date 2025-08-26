@@ -1,11 +1,60 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 import unicodedata
 import re
+import random
+import string
 from config import DOMINIO_AD, GRUPOS_PERMITIDOS
 from ldap_utils import conectar_ldap
 from ldap3 import MODIFY_REPLACE, MODIFY_ADD
 import logging
+
+
+class DetailedSuccessWindow:
+    def __init__(self, parent, user_info):
+        self.window = tk.Toplevel(parent)
+        self.window.title("Usuário Criado com Sucesso")
+        self.window.geometry("500x400")
+        self.window.resizable(True, True)
+        self.window.grab_set()  # Modal window
+        self.window.focus_set()
+        
+        # Frame principal
+        main_frame = ttk.Frame(self.window, padding=15)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Título
+        ttk.Label(main_frame, text="✅ Usuário criado com sucesso!", 
+                 font=("Arial", 14, "bold"), foreground="green").pack(pady=10)
+        
+        # Frame de informações
+        info_frame = ttk.LabelFrame(main_frame, text="Detalhes do Usuário", padding=10)
+        info_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        # Texto com scroll para informações
+        info_text = scrolledtext.ScrolledText(info_frame, wrap=tk.WORD, height=12, 
+                                             font=("Courier New", 10))
+        info_text.pack(fill=tk.BOTH, expand=True)
+        info_text.insert(tk.END, user_info)
+        info_text.config(state=tk.DISABLED)  # Tornar somente leitura
+        
+        # Frame de botões
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(pady=10)
+        
+        ttk.Button(btn_frame, text="Fechar", command=self.window.destroy).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Copiar Informações", command=lambda: self.copy_to_clipboard(user_info)).pack(side=tk.LEFT, padx=5)
+        
+        # Centralizar a janela
+        self.window.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() - self.window.winfo_width()) // 2
+        y = parent.winfo_y() + (parent.winfo_height() - self.window.winfo_height()) // 2
+        self.window.geometry(f"+{x}+{y}")
+    
+    def copy_to_clipboard(self, text):
+        self.window.clipboard_clear()
+        self.window.clipboard_append(text)
+        messagebox.showinfo("Copiado", "Informações copiadas para a área de transferência.")
 
 
 class IndividualFrame:
@@ -65,10 +114,27 @@ class IndividualFrame:
         self.old_username = ttk.Entry(old_logon_frame, width=20)
         self.old_username.pack(side=tk.LEFT)
 
+        # NOVO CAMPO: Senha do colaborador
+        ttk.Label(self.frame, text="Senha do colaborador:").grid(row=8, column=0, sticky=tk.W)
+        password_frame = ttk.Frame(self.frame)
+        password_frame.grid(row=8, column=1, pady=5, sticky=tk.W)
+
+        self.user_password = ttk.Entry(password_frame, width=20, show="*")
+        self.user_password.pack(side=tk.LEFT)
+        self.user_password.insert(0, "!@123456Aa")  # Senha padrão
+
+        # Botão para gerar senha aleatória
+        ttk.Button(password_frame, text="Gerar Senha", width=10, command=self.gerar_senha).pack(side=tk.LEFT, padx=5)
+
+        # Checkbox para mostrar senha
+        self.show_password = tk.BooleanVar()
+        ttk.Checkbutton(password_frame, text="Mostrar", variable=self.show_password, 
+                        command=self.toggle_password_visibility).pack(side=tk.LEFT, padx=5)
+
         # Usuário espelho
-        ttk.Label(self.frame, text="Usuário espelho para cópia:").grid(row=8, column=0, sticky=tk.W)
+        ttk.Label(self.frame, text="Usuário espelho para cópia:").grid(row=9, column=0, sticky=tk.W)
         template_frame = ttk.Frame(self.frame)
-        template_frame.grid(row=8, column=1, pady=5, sticky=tk.EW)
+        template_frame.grid(row=9, column=1, pady=5, sticky=tk.EW)
 
         self.template_user = ttk.Combobox(template_frame, width=25)
         self.template_user.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -78,8 +144,8 @@ class IndividualFrame:
         ttk.Button(template_frame, text="Limpar", width=8, command=self.clear_template_search).pack(side=tk.LEFT, padx=(5, 0))
 
         # Credenciais do TI
-        ttk.Separator(self.frame, orient=tk.HORIZONTAL).grid(row=9, column=0, columnspan=2, sticky=tk.EW, pady=10)
-        ttk.Label(self.frame, text="Credenciais do Grupo de TI", style="Header.TLabel").grid(row=10, column=0, columnspan=2, pady=5)
+        ttk.Separator(self.frame, orient=tk.HORIZONTAL).grid(row=10, column=0, columnspan=2, sticky=tk.EW, pady=10)
+        ttk.Label(self.frame, text="Credenciais do Grupo de TI", style="Header.TLabel").grid(row=11, column=0, columnspan=2, pady=5)
 
         ttk.Label(self.frame, text="Usuário de Rede:").grid(row=12, column=0, sticky=tk.W)
         user_frame = ttk.Frame(self.frame)
@@ -250,6 +316,19 @@ class IndividualFrame:
         
         self.load_template_users()
 
+    def gerar_senha(self):
+        # Gera uma senha com 12 caracteres incluindo letras, números e caracteres especiais
+        caracteres = string.ascii_letters + string.digits + "!@#$%&*"
+        senha = ''.join(random.choice(caracteres) for _ in range(12))
+        self.user_password.delete(0, tk.END)
+        self.user_password.insert(0, senha)
+
+    def toggle_password_visibility(self):
+        if self.show_password.get():
+            self.user_password.config(show="")
+        else:
+            self.user_password.config(show="*")
+
     # ================= LÓGICA DE CRIAÇÃO =================
 
     def generate_unique_login(self, conn, login, old_login):
@@ -287,9 +366,10 @@ class IndividualFrame:
         full_name = self.full_name.get().strip()
         username = self.username.get().strip()
         old_username = self.old_username.get().strip()
+        password = self.user_password.get().strip()
         template_input = self.template_user.get().strip()
 
-        if not full_name or not username or not old_username or not template_input:
+        if not full_name or not username or not old_username or not template_input or not password:
             messagebox.showerror("Erro", "Preencha todos os campos obrigatórios.")
             return
 
@@ -344,7 +424,7 @@ class IndividualFrame:
             logging.info(f"Usuário criado: {new_dn}")
 
             # --- Definir senha ---
-            password_value = '!@123456Aa'.encode('utf-16-le')
+            password_value = password.encode('utf-16-le')
             conn.modify(new_dn, {'unicodePwd': [(MODIFY_REPLACE, [password_value])]})
 
             # --- Ativar conta ---
@@ -358,16 +438,18 @@ class IndividualFrame:
                 for grupo_dn in template.memberOf.values:
                     conn.modify(grupo_dn, {'member': [(MODIFY_ADD, [new_dn])]})
 
-            # --- Sucesso ---
-            success_msg = (
-                f"Usuário criado com sucesso!\n\n"
+            # --- Criar mensagem detalhada ---
+            user_info = (
                 f"Nome: {full_name}\n"
                 f"Login: {unique_login}@motivabpo.com.br\n"
                 f"Login antigo: {DOMINIO_AD}\\{unique_old_login}\n"
-                f"OU: {container_dn}\n\n"
-                f"Senha inicial: !@123456Aa"
+                f"OU: {container_dn}\n"
+                f"Senha inicial: {password}\n\n"
+                f"Distinguished Name: {new_dn}"
             )
-            messagebox.showinfo("Sucesso", success_msg)
+            
+            # Exibir janela detalhada em vez de messagebox
+            DetailedSuccessWindow(self.root, user_info)
 
         except Exception as e:
             logging.error(f"Erro ao criar usuário: {e}")

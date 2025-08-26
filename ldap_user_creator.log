@@ -1593,3 +1593,4 @@ Nome Completo
 Modelo           Camila Fontes De Moraes Benedito (c_morben)
 Name: 0, dtype: object: create_user() missing 1 required positional argument: 'user_password'
 2025-08-22 13:25:45,643 - INFO - Usuário criado: cn=Marcos Lopes,OU=TARDE,OU=EXTERNO,OU=OPERADORES,OU=CLARO_VENDAS,OU=OPERACAO,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-08-26 10:06:08,802 - INFO - Usuário criado: cn=Victor Gabriel Fabri Maranhao,OU=ANALISTAS,OU=HELPDESK,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
