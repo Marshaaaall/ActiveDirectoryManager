@@ -1,8 +1,40 @@
 from ldap3 import Server, Connection, Tls, SIMPLE, MODIFY_REPLACE
 import ssl
-from config import DOMINIO_AD, SERVIDOR_AD, BASE_DN
-from ldap3 import Server, Connection, MODIFY_REPLACE
+import configparser
+import os
 import logging
+
+# ================= Carregar Configurações =================
+def carregar_configuracao():
+    """Carrega as configurações do arquivo config.ini"""
+    config = configparser.ConfigParser()
+    config_file = 'config.ini'
+    
+    # Configurações padrão caso o arquivo não exista
+    configuracao_padrao = {
+        'DOMINIO_AD': 'MOTIVA',
+        'SERVIDOR_AD': '10.100.0.10',
+        'BASE_DN': 'dc=motiva,dc=matriz'
+    }
+    
+    if os.path.exists(config_file):
+        config.read(config_file)
+        # Verifica se a seção LDAP existe
+        if 'LDAP' in config:
+            return {
+                'DOMINIO_AD': config['LDAP'].get('DOMINIO_AD', configuracao_padrao['DOMINIO_AD']),
+                'SERVIDOR_AD': config['LDAP'].get('SERVIDOR_AD', configuracao_padrao['SERVIDOR_AD']),
+                'BASE_DN': config['LDAP'].get('BASE_DN', configuracao_padrao['BASE_DN'])
+            }
+    
+    # Retorna configurações padrão se o arquivo não existir ou não tiver a seção LDAP
+    return configuracao_padrao
+
+# Carrega as configurações
+CONFIG = carregar_configuracao()
+DOMINIO_AD = CONFIG['DOMINIO_AD']
+SERVIDOR_AD = CONFIG['SERVIDOR_AD']
+BASE_DN = CONFIG['BASE_DN']
 
 # ================= Conexão LDAP =================
 def conectar_ldap(usuario, senha):
@@ -34,8 +66,6 @@ def conectar_ldap(usuario, senha):
     )
     
     return conn
-    
-
 
 # ================= Criação de Usuário =================
 def create_user(conn, cn, surname, ou_dn, user_password, additional_attrs=None):
@@ -122,3 +152,8 @@ def move_user(conn, user_dn, new_parent_dn):
     except Exception as e:
         print(f"Erro mover usuário {user_dn}: {e}")
         return False
+
+# Função para obter configurações em outros módulos
+def obter_configuracao():
+    """Retorna as configurações carregadas"""
+    return CONFIG
