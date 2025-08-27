@@ -10,24 +10,26 @@ def carregar_configuracao():
     config = configparser.ConfigParser()
     config_file = 'config.ini'
     
-    # Configurações padrão caso o arquivo não exista
+    
     configuracao_padrao = {
         'DOMINIO_AD': 'MOTIVA',
         'SERVIDOR_AD': '10.100.0.10',
-        'BASE_DN': 'dc=motiva,dc=matriz'
+        'BASE_DN': 'dc=motiva,dc=matriz',
+        'PORT': '636'
     }
     
     if os.path.exists(config_file):
         config.read(config_file)
-        # Verifica se a seção LDAP existe
+       
         if 'LDAP' in config:
             return {
                 'DOMINIO_AD': config['LDAP'].get('DOMINIO_AD', configuracao_padrao['DOMINIO_AD']),
                 'SERVIDOR_AD': config['LDAP'].get('SERVIDOR_AD', configuracao_padrao['SERVIDOR_AD']),
-                'BASE_DN': config['LDAP'].get('BASE_DN', configuracao_padrao['BASE_DN'])
+                'BASE_DN': config['LDAP'].get('BASE_DN', configuracao_padrao['BASE_DN']),
+                'PORT': config['LDAP'].get('PORT', configuracao_padrao['PORT'])
             }
     
-    # Retorna configurações padrão se o arquivo não existir ou não tiver a seção LDAP
+
     return configuracao_padrao
 
 # Carrega as configurações
@@ -35,6 +37,7 @@ CONFIG = carregar_configuracao()
 DOMINIO_AD = CONFIG['DOMINIO_AD']
 SERVIDOR_AD = CONFIG['SERVIDOR_AD']
 BASE_DN = CONFIG['BASE_DN']
+PORT = int(CONFIG['PORT'])
 
 # ================= Conexão LDAP =================
 def conectar_ldap(usuario, senha):
@@ -48,12 +51,15 @@ def conectar_ldap(usuario, senha):
         version=ssl.PROTOCOL_TLSv1_2
     )
     
+    # Determinar se deve usar SSL com base na porta
+    use_ssl = PORT == 636  # SSL para porta 636, sem SSL para outras portas
+    
     server = Server(
         SERVIDOR_AD,
-        use_ssl=True,
-        tls=tls_configuration,
+        use_ssl=use_ssl,
+        tls=tls_configuration if use_ssl else None,
         get_info='ALL',
-        port=636
+        port=PORT
     )
     
     # Usar autenticação NTLM

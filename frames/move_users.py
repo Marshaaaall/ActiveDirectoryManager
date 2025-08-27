@@ -2,8 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import logging
-from config import DOMINIO_AD, BASE_DN
-from ldap_utils import conectar_ldap, extract_ou_from_dn, is_account_disabled, move_user
+from ldap_utils import conectar_ldap, extract_ou_from_dn, is_account_disabled, move_user, obter_configuracao
 
 class MoveUsersFrame(ttk.Frame):
     def __init__(self, parent, root):
@@ -13,6 +12,11 @@ class MoveUsersFrame(ttk.Frame):
         self.conn_move = None
         self.all_users = []
         self.ous_list = []
+        
+        # Carrega as configurações iniciais
+        self.config = obter_configuracao()
+        self.dominio_ad = self.config['DOMINIO_AD']
+        self.base_dn = self.config['BASE_DN']
 
         self._setup_ui()
 
@@ -51,7 +55,7 @@ class MoveUsersFrame(ttk.Frame):
         ttk.Label(self, text="Usuário de Rede:").grid(row=6, column=0, sticky=tk.W)
         user_frame = ttk.Frame(self)
         user_frame.grid(row=6, column=1, sticky=tk.W)
-        ttk.Label(user_frame, text=f"{DOMINIO_AD}\\", foreground="gray").pack(side=tk.LEFT)
+        ttk.Label(user_frame, text=f"{self.dominio_ad}\\", foreground="gray").pack(side=tk.LEFT)
         self.admin_user = ttk.Entry(user_frame, width=25)
         self.admin_user.pack(side=tk.LEFT)
         ttk.Label(self, text="Senha:").grid(row=7, column=0, sticky=tk.W)
@@ -101,9 +105,13 @@ class MoveUsersFrame(ttk.Frame):
             messagebox.showerror("Erro","Conecte-se primeiro com credenciais válidas")
             return
         try:
+            # Atualiza as configurações antes de carregar os usuários
+            self.config = obter_configuracao()
+            self.base_dn = self.config['BASE_DN']
+            
             self.status_label.config(text="Carregando usuários...", foreground="blue")
             self.all_users=[]
-            self.conn_move.search(BASE_DN,'(&(objectClass=user)(objectCategory=person))',attributes=['cn','distinguishedName','userAccountControl'])
+            self.conn_move.search(self.base_dn,'(&(objectClass=user)(objectCategory=person))',attributes=['cn','distinguishedName','userAccountControl'])
             for e in self.conn_move.entries:
                 cn = e.cn.value
                 dn = e.distinguishedName.value
@@ -119,7 +127,11 @@ class MoveUsersFrame(ttk.Frame):
 
     def load_ous(self):
         try:
-            self.conn_move.search(BASE_DN,'(objectClass=organizationalUnit)',attributes=['distinguishedName'])
+            # Atualiza as configurações antes de carregar as OUs
+            self.config = obter_configuracao()
+            self.base_dn = self.config['BASE_DN']
+            
+            self.conn_move.search(self.base_dn,'(objectClass=organizationalUnit)',attributes=['distinguishedName'])
             self.ous_list = [e.distinguishedName.value for e in self.conn_move.entries]
             self.target_ou['values'] = ["Domínio Raiz"]+self.ous_list
             return True
@@ -165,17 +177,21 @@ class MoveUsersFrame(ttk.Frame):
         threading.Thread(target=self._thread_move, args=(selected,target),daemon=True).start()
 
     def _thread_move(self, users, target):
+        # Atualiza as configurações antes de mover os usuários
+        self.config = obter_configuracao()
+        self.base_dn = self.config['BASE_DN']
+        
         total = len(users)
         success, errors = 0,0
         self.progress_var.set(0)
         self.progress_bar["maximum"] = total
         for i,cn in enumerate(users):
             try:
-                self.conn_move.search(BASE_DN,f"(cn={cn})",attributes=['distinguishedName'], size_limit=1)
+                self.conn_move.search(self.base_dn,f"(cn={cn})",attributes=['distinguishedName'], size_limit=1)
                 if not self.conn_move.entries:
                     raise Exception("Usuário não encontrado")
                 user_dn = self.conn_move.entries[0].distinguishedName.value
-                new_parent = BASE_DN if target=="Domínio Raiz" else target
+                new_parent = self.base_dn if target=="Domínio Raiz" else target
                 if move_user(self.conn_move,user_dn,new_parent):
                     success+=1
                 else:
@@ -202,6 +218,10 @@ class MoveUsersFrame(ttk.Frame):
         threading.Thread(target=self._thread_remove, args=(selected,), daemon=True).start()
 
     def _thread_remove(self, users):
+        # Atualiza as configurações antes de remover os usuários
+        self.config = obter_configuracao()
+        self.base_dn = self.config['BASE_DN']
+        
         total = len(users)
         success, errors = 0, 0
         self.progress_var.set(0)
@@ -209,7 +229,7 @@ class MoveUsersFrame(ttk.Frame):
 
         for i, cn in enumerate(users):
             try:
-                self.conn_move.search(BASE_DN, f"(cn={cn})", attributes=['distinguishedName'], size_limit=1)
+                self.conn_move.search(self.base_dn, f"(cn={cn})", attributes=['distinguishedName'], size_limit=1)
                 if not self.conn_move.entries:
                     raise Exception("Usuário não encontrado")
                 user_dn = self.conn_move.entries[0].distinguishedName.value
