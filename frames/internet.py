@@ -417,14 +417,9 @@ class InternetGroupsFrame(ttk.Frame):
         Obtém o DN de um grupo. Se a string de entrada já for um DN, 
         retorna diretamente. Caso contrário, busca no AD.
         """
-    # CHECAGEM INTELIGENTE: Se a string já for um DN, retorne-a diretamente
-        # Um DN tipicamente contém 'cn=', 'ou=' e 'dc='
         if group_name.lower().startswith('cn=') and 'ou=' in group_name.lower() and 'dc=' in group_name.lower():
-            print(f"--- A entrada '{group_name}' já parece ser um DN. Retornando diretamente.")
-            # Opcional: Você pode adicionar uma verificação aqui para ver se o objeto realmente existe
             return group_name
-
-        # Se não for um DN, o código de busca original continua aqui
+        
         try:
             search_bases = [
                 self.config.get('GROUPS_BASE_DN', self.base_dn),
