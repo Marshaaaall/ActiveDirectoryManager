@@ -6,11 +6,12 @@ from frames.mass_import import MassImportFrame
 from frames.move_users import MoveUsersFrame
 from frames.mass_move import MassUsersFrame
 from frames.settings import SettingsFrame
+from frames.internet import InternetGroupsFrame
 
 class App:
     def __init__(self, root):
         root.title("Gerenciamento de Usuários LDAP - MOTIVA")
-        root.geometry("1000x700")
+        root.geometry("1200x700")
         root.resizable(False, False)
 
         main_frame = ttk.Frame(root, padding=10)
@@ -34,6 +35,9 @@ class App:
         
         mass_move_tab = MassUsersFrame(self.notebook, root)
         self.notebook.add(mass_move_tab, text="Movimento em Massa")
+
+        internet_tab = InternetGroupsFrame(self.notebook, root)
+        self.notebook.add(internet_tab, text="Propriedades")
 
         setting_tab = SettingsFrame(self.notebook, root)
         self.notebook.add(setting_tab, text="Configurações")

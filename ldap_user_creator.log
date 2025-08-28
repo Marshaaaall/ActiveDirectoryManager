@@ -1594,3 +1594,12 @@ Modelo           Camila Fontes De Moraes Benedito (c_morben)
 Name: 0, dtype: object: create_user() missing 1 required positional argument: 'user_password'
 2025-08-22 13:25:45,643 - INFO - Usuário criado: cn=Marcos Lopes,OU=TARDE,OU=EXTERNO,OU=OPERADORES,OU=CLARO_VENDAS,OU=OPERACAO,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
 2025-08-26 10:06:08,802 - INFO - Usuário criado: cn=Victor Gabriel Fabri Maranhao,OU=ANALISTAS,OU=HELPDESK,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-08-28 08:54:46,713 - INFO - Conexão bem-sucedida para o usuário: k_rodbra
+2025-08-28 08:54:46,858 - INFO - 825 OUs carregadas com sucesso.
+2025-08-28 08:54:59,242 - INFO - Planilha 'C:/Users/k_rodbra/Downloads/Mover em massa.xlsx' carregada com 1 usuários.
+2025-08-28 09:21:19,173 - INFO - Usuário criado: cn=Seixas Rodrigues Arruda,OU=ASSISTENTES,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-08-28 09:30:36,195 - ERROR - Erro ao remover grupo: invalid change list
+2025-08-28 10:49:04,639 - WARNING - Busca falhou na base OU=Grupos_Fortigate,OU=MOTIVA,DC=motiva,DC=matrix: invalid server address
+2025-08-28 10:49:04,639 - ERROR - Grupo CN=g_fg_analistas_ti,OU=Grupos_Fortigate,OU=MOTIVA,DC=motiva,DC=matriz não encontrado em nenhuma base de busca
+2025-08-28 10:51:17,842 - ERROR - Grupo CN=g_fg_analistas_ti,OU=Grupos_Fortigate,OU=MOTIVA,DC=motiva,DC=matriz não encontrado em nenhuma base de busca
+2025-08-28 10:55:16,838 - ERROR - Grupo CN=g_fg_analistas_ti,OU=Grupos_Fortigate,OU=MOTIVA,DC=motiva,DC=matriz não encontrado em nenhuma base de busca
