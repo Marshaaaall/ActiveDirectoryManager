@@ -1,6 +1,6 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from ldap3 import MODIFY_ADD, MODIFY_DELETE, SUBTREE
+from tkinter import ttk, messagebox, simpledialog
+from ldap3 import MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE, SUBTREE
 import threading
 import logging
 from ldap_utils import conectar_ldap, extract_ou_from_dn, is_account_disabled, obter_configuracao
@@ -15,6 +15,7 @@ class InternetGroupsFrame(ttk.Frame):
         self.internet_groups = []
         self.user_details = {}
         self.selected_user = None
+        self.selected_users_set = set()  # Novo: Armazena usuários selecionados
         
         # Carrega as configurações iniciais
         self.config = obter_configuracao()
@@ -85,6 +86,14 @@ class InternetGroupsFrame(ttk.Frame):
         self.detail_status = ttk.Label(info_frame, text="", width=30)
         self.detail_status.grid(row=2, column=1, sticky=tk.W)
         
+        # Botão para resetar senha
+        self.reset_password_btn = ttk.Button(info_frame, text="Resetar Senha", command=self.reset_password)
+        self.reset_password_btn.grid(row=3, column=0, columnspan=2, pady=5)
+        
+        # NOVO BOTÃO PARA ATIVAR/DESATIVAR USUÁRIO
+        self.toggle_status_btn = ttk.Button(info_frame, text="Ativar/Desativar", command=self.toggle_user_status)
+        self.toggle_status_btn.grid(row=4, column=0, columnspan=2, pady=5)
+        
         # Frame para grupos de internet
         groups_frame = ttk.LabelFrame(details_frame, text="Grupos de Internet")
         groups_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -100,6 +109,8 @@ class InternetGroupsFrame(ttk.Frame):
         
         ttk.Button(group_controls_frame, text="Adicionar", command=self.add_group_to_user).pack(side=tk.LEFT, padx=2)
         ttk.Button(group_controls_frame, text="Remover", command=self.remove_group_from_user).pack(side=tk.LEFT, padx=2)
+        # NOVO BOTÃO PARA ESPELHAR GRUPOS
+        ttk.Button(group_controls_frame, text="Espelhar Grupos", command=self.mirror_groups).pack(side=tk.LEFT, padx=2)
         
         # Treeview para grupos
         self.groups_tree = ttk.Treeview(groups_frame, columns=("group_name",), show="headings", height=8)
@@ -193,7 +204,16 @@ class InternetGroupsFrame(ttk.Frame):
             item = self.tree.identify_row(event.y)
             if col == "#1" and item:  # Coluna de seleção
                 vals = list(self.tree.item(item, "values"))
-                vals[0] = "[X]" if vals[0] == "[ ]" else "[ ]"
+                username = vals[1]
+                
+                if vals[0] == "[ ]":
+                    vals[0] = "[X]"
+                    self.selected_users_set.add(username)  # Adiciona ao conjunto
+                else:
+                    vals[0] = "[ ]"
+                    if username in self.selected_users_set:
+                        self.selected_users_set.remove(username)  # Remove do conjunto
+                
                 self.tree.item(item, values=vals)
     
     def on_user_select(self, event):
@@ -255,9 +275,12 @@ class InternetGroupsFrame(ttk.Frame):
         term = self.search_var.get().lower()
         self.tree.delete(*self.tree.get_children())
         filtered = [u for u in self.all_users if term in u[0].lower()] if term else self.all_users
+        
         for cn, ou, status, is_disabled, groups in filtered:
+            # Verifica se o usuário está no conjunto de selecionados
+            selected_mark = "[X]" if cn in self.selected_users_set else "[ ]"
             tag = "disabled" if is_disabled else "active"
-            self.tree.insert("", "end", values=("[ ]", cn, ou, status, ", ".join(groups)), tags=(tag,))
+            self.tree.insert("", "end", values=(selected_mark, cn, ou, status, ", ".join(groups)), tags=(tag,))
     
     def load_users(self):
         if not self.conn or not self.conn.bound:
@@ -270,6 +293,7 @@ class InternetGroupsFrame(ttk.Frame):
             
             self.status_label.config(text="Carregando usuários...", foreground="blue")
             self.all_users = []
+            self.selected_users_set.clear()  # Limpa seleções ao recarregar
             
             self.conn.search(
                 self.base_dn, 
@@ -358,7 +382,6 @@ class InternetGroupsFrame(ttk.Frame):
                 messagebox.showerror("Erro", f"Grupo '{group}' não encontrado")
                 return
             
-            # Modificação para ldap3
             changes = {
                 'member': [(MODIFY_ADD, [user_dn])]
             }
@@ -395,7 +418,6 @@ class InternetGroupsFrame(ttk.Frame):
                 messagebox.showerror("Erro", f"Grupo '{group}' não encontrado")
                 return
             
-            # Modificação para ldap3
             changes = {
                 'member': [(MODIFY_DELETE, [user_dn])]
             }
@@ -466,11 +488,7 @@ class InternetGroupsFrame(ttk.Frame):
             messagebox.showerror("Erro", "Selecione uma ação e um grupo")
             return
             
-        selected_users = []
-        for item in self.tree.get_children():
-            values = self.tree.item(item, "values")
-            if values[0] == "[X]":
-                selected_users.append(values[1])
+        selected_users = self._get_selected_users()
                 
         if not selected_users:
             messagebox.showinfo("Info", "Nenhum usuário selecionado")
@@ -541,3 +559,289 @@ class InternetGroupsFrame(ttk.Frame):
     def _update_progress(self, current, success, errors, total):
         self.progress_var.set(current)
         self.status_label.config(text=f"Processados: {current}/{total} | Sucessos: {success} | Erros: {errors}")
+    
+    def reset_password(self):
+        if not self.selected_user:
+            messagebox.showwarning("Aviso", "Selecione um usuário primeiro")
+            return
+
+        if not self.conn or not self.conn.bound:
+            messagebox.showerror("Erro", "Conecte-se primeiro com credenciais válidas")
+            return
+
+        # Pedir nova senha
+        new_password = simpledialog.askstring("Resetar Senha", 
+                                            f"Digite a nova senha para {self.selected_user}:",
+                                            show='*', parent=self)
+        if not new_password:
+            return
+
+        # Confirmar senha
+        confirm_password = simpledialog.askstring("Confirmar Senha", 
+                                                "Confirme a nova senha:",
+                                                show='*', parent=self)
+        if new_password != confirm_password:
+            messagebox.showerror("Erro", "As senhas não coincidem")
+            return
+
+        try:
+            user_dn = self.user_details[self.selected_user]['dn']
+            
+            # Codificar a nova senha conforme required pelo AD
+            encoded_password = f'"{new_password}"'.encode('utf-16-le')
+            
+            changes = {
+                'unicodePwd': [(MODIFY_REPLACE, [encoded_password])]
+            }
+            
+            if self.conn.modify(user_dn, changes):
+                messagebox.showinfo("Sucesso", f"Senha resetada com sucesso para {self.selected_user}")
+            else:
+                messagebox.showerror("Erro", f"Falha ao resetar senha: {self.conn.result}")
+            
+        except Exception as e:
+            logging.error(f"Erro ao resetar senha: {e}")
+            messagebox.showerror("Erro", f"Não foi possível resetar a senha: {e}")
+    
+    def toggle_user_status(self):
+        selected_users = self._get_selected_users()
+        
+        if not selected_users:
+            messagebox.showwarning("Aviso", "Selecione pelo menos um usuário")
+            return
+
+        if not self.conn or not self.conn.bound:
+            messagebox.showerror("Erro", "Conecte-se primeiro com credenciais válidas")
+            return
+
+        confirm = messagebox.askyesno(
+            "Confirmar",
+            f"Deseja alternar o status de {len(selected_users)} usuário(s)?"
+        )
+        if not confirm:
+            return
+
+        threading.Thread(target=self._thread_toggle_status, args=(selected_users,), daemon=True).start()
+
+    def _get_selected_users(self):
+        # Retorna os usuários selecionados a partir do conjunto
+        return list(self.selected_users_set)
+    
+    def _thread_toggle_status(self, users):
+        total = len(users)
+        success, errors = 0, 0
+        self.root.after(0, lambda: self.progress_var.set(0))
+        self.root.after(0, lambda: self.progress_bar.config(maximum=total))
+
+        for i, username in enumerate(users):
+            try:
+                user_dn = self._get_user_dn(username)
+                if not user_dn:
+                    errors += 1
+                    continue
+
+                # Busca o estado atual do usuário
+                self.conn.search(
+                    user_dn,
+                    '(objectClass=user)',
+                    attributes=['userAccountControl']
+                )
+                
+                if not self.conn.entries:
+                    errors += 1
+                    continue
+
+                current_uac = self.conn.entries[0].userAccountControl.value
+                new_uac = current_uac ^ 2  # Flip the disabled bit
+
+                changes = {
+                    'userAccountControl': [(MODIFY_REPLACE, [new_uac])]
+                }
+
+                if self.conn.modify(user_dn, changes):
+                    success += 1
+                    # Atualiza o status localmente
+                    self._update_local_user_status(username, new_uac)
+                else:
+                    errors += 1
+
+            except Exception as e:
+                logging.error(f"Erro ao alternar status de {username}: {e}")
+                errors += 1
+
+            self.root.after(0, lambda cur=i+1: self.progress_var.set(cur))
+            self.root.after(0, lambda: self.status_label.config(
+                text=f"Processando: {i+1}/{total} | Sucessos: {success} | Erros: {errors}"
+            ))
+
+        # Atualiza the interface
+        self.root.after(0, self.load_users)
+        if self.selected_user:
+            self.root.after(0, lambda: self.show_user_details(self.selected_user))
+
+        msg = f"Operação concluída: {success} sucesso(s), {errors} erro(s)"
+        self.root.after(0, lambda: self.status_label.config(
+            text=msg,
+            foreground="green" if errors == 0 else "orange"
+        ))
+        self.root.after(0, lambda: messagebox.showinfo("Resultado", msg))
+
+    def _get_user_dn(self, username):
+        if username in self.user_details:
+            return self.user_details[username]['dn']
+        
+        try:
+            self.conn.search(
+                self.base_dn,
+                f"(cn={username})",
+                attributes=['distinguishedName']
+            )
+            if self.conn.entries:
+                return self.conn.entries[0].distinguishedName.value
+        except Exception as e:
+            logging.error(f"Erro ao buscar DN de {username}: {e}")
+        
+        return None
+
+    def _update_local_user_status(self, username, new_uac):
+        disabled = is_account_disabled(new_uac)
+        status = "Desativado" if disabled else "Ativo"
+        
+        # Atualiza no dicionário de detalhes se existir
+        if username in self.user_details:
+            self.user_details[username]['status'] = status
+
+        # Atualiza na lista de usuários
+        for i, user in enumerate(self.all_users):
+            if user[0] == username:
+                self.all_users[i] = (
+                    user[0],
+                    user[1],
+                    status,
+                    disabled,
+                    user[4]
+                )
+                break
+    
+    # NOVOS MÉTODOS PARA ESPELHAR GRUPOS
+    def mirror_groups(self):
+        if not self.conn or not self.conn.bound:
+            messagebox.showerror("Erro", "Conecte-se primeiro com credenciais válidas")
+            return
+
+        # Obter usuário de origem
+        source_user = self.selected_user
+        if not source_user:
+            messagebox.showwarning("Aviso", "Selecione um usuário de origem primeiro")
+            return
+
+        # Obter usuários de destino
+        target_users = self._get_selected_users()
+        if not target_users:
+            messagebox.showwarning("Aviso", "Selecione pelo menos um usuário destino")
+            return
+
+        if source_user in target_users:
+            messagebox.showwarning("Aviso", "Usuário de origem não pode estar na lista de destinos")
+            return
+
+        confirm = messagebox.askyesno(
+            "Confirmar",
+            f"Deseja copiar os grupos de {source_user} para {len(target_users)} usuário(s)?"
+        )
+        if not confirm:
+            return
+
+        threading.Thread(target=self._thread_mirror_groups, 
+                       args=(source_user, target_users), daemon=True).start()
+
+    def _thread_mirror_groups(self, source_user, target_users):
+        try:
+            total = len(target_users)
+            success, errors = 0, 0
+            self.root.after(0, lambda: self.progress_var.set(0))
+            self.root.after(0, lambda: self.progress_bar.config(maximum=total))
+
+            # Obter grupos do usuário origem
+            source_groups = self._get_user_internet_groups(source_user)
+            if source_groups is None:
+                self.root.after(0, lambda: messagebox.showerror("Erro", 
+                    f"Não foi possível obter grupos do usuário {source_user}"))
+                return
+
+            for i, target_user in enumerate(target_users):
+                try:
+                    if self._apply_groups_to_user(target_user, source_groups):
+                        success += 1
+                    else:
+                        errors += 1
+                except Exception as e:
+                    logging.error(f"Erro ao espelhar grupos para {target_user}: {e}")
+                    errors += 1
+
+                self.root.after(0, lambda cur=i+1: self.progress_var.set(cur))
+                self.root.after(0, lambda: self.status_label.config(
+                    text=f"Processando: {i+1}/{total} | Sucessos: {success} | Erros: {errors}"
+                ))
+
+            # Atualizar interface
+            self.root.after(0, self.load_users)
+            msg = f"Espelhamento concluído: {success} sucesso(s), {errors} erro(s)"
+            self.root.after(0, lambda: self.status_label.config(
+                text=msg,
+                foreground="green" if errors == 0 else "orange"
+            ))
+            self.root.after(0, lambda: messagebox.showinfo("Resultado", msg))
+
+        except Exception as e:
+            logging.error(f"Erro no espelhamento: {e}")
+            self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha no espelhamento: {e}"))
+
+    def _get_user_internet_groups(self, username):
+        """Obtém a lista de grupos de internet de um usuário"""
+        try:
+            self.conn.search(
+                self.base_dn,
+                f"(cn={username})",
+                attributes=[self.internet_group_attribute]
+            )
+            if self.conn.entries:
+                groups = getattr(self.conn.entries[0], self.internet_group_attribute).values
+                return [g for g in groups if any(ig in g for ig in self.internet_groups)]
+        except Exception as e:
+            logging.error(f"Erro ao buscar grupos de {username}: {e}")
+        return None
+
+    def _apply_groups_to_user(self, target_user, target_groups):
+        """Aplica a lista de grupos ao usuário destino"""
+        try:
+            user_dn = self._get_user_dn(target_user)
+            if not user_dn:
+                return False
+
+            # Obter grupos atuais do usuário
+            current_groups = self._get_user_internet_groups(target_user) or []
+
+            # Determinar mudanças necessárias
+            groups_to_add = [g for g in target_groups if g not in current_groups]
+            groups_to_remove = [g for g in current_groups if g not in target_groups]
+
+            # Aplicar remoções
+            for group in groups_to_remove:
+                group_dn = self.get_group_dn(group)
+                if group_dn:
+                    changes = {'member': [(MODIFY_DELETE, [user_dn])]}
+                    self.conn.modify(group_dn, changes)
+
+            # Aplicar adições
+            for group in groups_to_add:
+                group_dn = self.get_group_dn(group)
+                if group_dn:
+                    changes = {'member': [(MODIFY_ADD, [user_dn])]}
+                    self.conn.modify(group_dn, changes)
+
+            return True
+
+        except Exception as e:
+            logging.error(f"Erro ao aplicar grupos para {target_user}: {e}")
+            return False

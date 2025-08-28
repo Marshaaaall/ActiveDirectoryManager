@@ -11,7 +11,7 @@ from frames.internet import InternetGroupsFrame
 class App:
     def __init__(self, root):
         root.title("Gerenciamento de Usuários LDAP - MOTIVA")
-        root.geometry("1200x700")
+        root.geometry("1350x800")
         root.resizable(False, False)
 
         main_frame = ttk.Frame(root, padding=10)
