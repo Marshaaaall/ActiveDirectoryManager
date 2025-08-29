@@ -13,13 +13,13 @@ a base, pasta e criação</p><br>
 
 <h2>Alteração de componentes</h2>
 
-<h3>Mover</h3><br>
+<h3>Mover</h3>
 <p>O <b>ADM</b> informa graficamente todas as pessoas já criadas na sua Matriz, podendo move-las de Unidade Organizacional (OU) com poucos cliques</p>
 
-<h3>Remover</h3><br>
+<h3>Remover</h3>
 <p> Ao selecionar seu objeto, você tem a opção de remove-lo com resposta em tempo <b>REAL</b></p>
 
-<h3>Ativar e desativar</h3><br>
+<h3>Ativar e desativar</h3>
 
 <p>Ao selecionar um usuário pode-se desativa-lo caso ele esteja ativo, ou ativa-lo caso esteja desativo, podendo assim manter sua OU mais organizada</p><br>
 
