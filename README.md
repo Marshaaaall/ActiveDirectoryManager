@@ -12,4 +12,7 @@ a base, pasta e criação</p>
 
 <h2>Alteração de componentes</h2>
 
-<p>Com os</p>
+<h3>Mover</h3>
+<p>O <b>ADM</b> informa graficamente todas as pessoas já criadas na sua Matriz, podendo move-las de Unidade Organizacional (OU) com poucos cliques</p>
+
+
