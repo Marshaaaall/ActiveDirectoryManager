@@ -12,7 +12,9 @@ a base, pasta e criação</p>
 
 <h2>Alteração de componentes</h2>
 
-<h3>Mover</h3>
+<h3>Mover</h3><br>
 <p>O <b>ADM</b> informa graficamente todas as pessoas já criadas na sua Matriz, podendo move-las de Unidade Organizacional (OU) com poucos cliques</p>
 
+<h3>Remover</h3><br>
+<p> Ao selecionar seu objeto, você tem a opção de remove-lo com resposta em tempo <b>REAL</b></p>
 
