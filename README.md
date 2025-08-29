@@ -9,7 +9,7 @@ criar, remover, alterar os componentes e usuários do AD reduzindo a margem de e
 <h2>Criar🔔</h2>
 
 <p>Com base nas operações e atributos de um usuário espelho escolhido, o <b>ADM</b> configura um objeto dentro da Unidade Organizacional da sua matriz, seguindo
-a base, pasta e criação</p>
+a base, pasta e criação</p><br>
 
 <h2>Alteração de componentes</h2>
 
@@ -18,4 +18,8 @@ a base, pasta e criação</p>
 
 <h3>Remover</h3><br>
 <p> Ao selecionar seu objeto, você tem a opção de remove-lo com resposta em tempo <b>REAL</b></p>
+
+<h3>Ativar e desativar</h3><br>
+
+<p></p>
 
