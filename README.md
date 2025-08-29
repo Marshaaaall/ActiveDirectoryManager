@@ -3,6 +3,7 @@
 <div>
 Desenvolvido com <b>PYTHON</b> o Active Directory Manager (A.D.M) é uma ferramenta que auxilia na utilização do AD, com base nas configurações inseridas ele pode
 criar, remover, alterar os componentes e usuários do AD reduzindo a margem de erro destas operações.
+</div><br>
 
 
 <h2>Criar🔔</h2>
