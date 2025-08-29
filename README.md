@@ -21,7 +21,7 @@ a base, pasta e criação</p><br>
 
 <h3>Ativar e desativar</h3><br>
 
-<p>Ao selecionar um usuário pode-se desativa-lo caso ele esteja ativo, ou ativa-lo caso esteja desativo, podendo assim manter sua OU mais organizada</p>
+<p>Ao selecionar um usuário pode-se desativa-lo caso ele esteja ativo, ou ativa-lo caso esteja desativo, podendo assim manter sua OU mais organizada</p><br>
 
 <h2>Dashboard</h2>
 
