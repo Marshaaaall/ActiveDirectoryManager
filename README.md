@@ -21,5 +21,10 @@ a base, pasta e criação</p><br>
 
 <h3>Ativar e desativar</h3><br>
 
-<p></p>
+<p>Ao selecionar um usuário pode-se desativa-lo caso ele esteja ativo, ou ativa-lo caso esteja desativo, podendo assim manter sua OU mais organizada</p>
+
+<h2>Dashboard</h2>
+
+<p>O usuário também poderá verificar todas as informações de todas as OU's presentes, quantas pessoas ativas, desativas, nunca logadas e objetos inativos por mais de 30 dias, assim mantendo o controle de todas as informações presentes em sua Matriz</p>
+
 
