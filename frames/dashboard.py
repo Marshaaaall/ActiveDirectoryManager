@@ -9,9 +9,9 @@ from datetime import timezone
 import threading
 
 
-class DashboardFrame(ttk.Frame):  # Agora herda de ttk.Frame
+class DashboardFrame(ttk.Frame):
     def __init__(self, parent):
-        super().__init__(parent)  # Chama o construtor do ttk.Frame
+        super().__init__(parent)
         self.parent = parent
         
         # Variáveis para armazenar dados
@@ -461,14 +461,3 @@ class DashboardFrame(ttk.Frame):  # Agora herda de ttk.Frame
                 user["last_logon"],
                 user["groups"]
             ), tags=tags)
-
-# Exemplo de uso standalone (para testar o dashboard isoladamente)
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.title("Dashboard AD")
-    root.geometry("1100x700")
-    
-    dashboard = DashboardFrame(root)
-    dashboard.pack(fill=tk.BOTH, expand=True)
-    
-    root.mainloop()

@@ -1,9 +1,79 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 from ldap3 import MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE, SUBTREE
 import threading
 import logging
 from ldap_utils import conectar_ldap, extract_ou_from_dn, is_account_disabled, obter_configuracao
+
+class PasswordResetDialog(tk.Toplevel):
+    def __init__(self, parent, username):
+        super().__init__(parent)
+        self.title(f"Redefinir senha - {username}")
+        self.geometry("500x300")
+        self.resizable(False, False)
+        self.username = username
+        self.result = None
+        
+        self.create_widgets()
+        self.grab_set()
+        self.focus_force()
+        
+    def create_widgets(self):
+        # Título
+        ttk.Label(self, text="Redefinir senha", font=("Arial", 12, "bold")).pack(pady=10)
+        
+        # Nova senha
+        ttk.Label(self, text="Nova senha:").pack(anchor=tk.W, padx=20)
+        self.new_password = ttk.Entry(self, show="*", width=30)
+        self.new_password.pack(padx=20, pady=5, fill=tk.X)
+        
+        # Confirmar senha
+        ttk.Label(self, text="Confirmar senha:").pack(anchor=tk.W, padx=20)
+        self.confirm_password = ttk.Entry(self, show="*", width=30)
+        self.confirm_password.pack(padx=20, pady=5, fill=tk.X)
+        
+        # Checkbox para alterar senha no próximo logon
+        self.must_change = tk.BooleanVar()
+        ttk.Checkbutton(self, text="O usuário deve alterar a senha no próximo logon", 
+                       variable=self.must_change).pack(anchor=tk.W, padx=20, pady=10)
+        
+        # Texto informativo
+        ttk.Label(self, text="O usuário deve fazer logoff e fazer logon novamente para que a alteração entre em vigor.", 
+                 font=("Arial", 8), foreground="gray").pack(anchor=tk.W, padx=20)
+        
+        # Status de bloqueio
+        ttk.Label(self, text="Status de Bloqueio da Conta neste Controlador de Domínio: Desbloqueado").pack(anchor=tk.W, padx=20, pady=10)
+        
+        # Checkbox desbloquear conta
+        self.unlock_account = tk.BooleanVar()
+        ttk.Checkbutton(self, text="Desbloquear a conta do usuário", 
+                       variable=self.unlock_account).pack(anchor=tk.W, padx=20, pady=5)
+        
+        # Botões
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(pady=20)
+        
+        ttk.Button(btn_frame, text="OK", command=self.on_ok).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="Cancelar", command=self.destroy).pack(side=tk.LEFT, padx=10)
+    
+    def on_ok(self):
+        new_pwd = self.new_password.get()
+        confirm_pwd = self.confirm_password.get()
+        
+        if not new_pwd or not confirm_pwd:
+            messagebox.showerror("Erro", "Preencha ambos os campos de senha")
+            return
+            
+        if new_pwd != confirm_pwd:
+            messagebox.showerror("Erro", "As senha não coincidem")
+            return
+            
+        self.result = {
+            'new_password': new_pwd,
+            'must_change': self.must_change.get(),
+            'unlock_account': self.unlock_account.get()
+        }
+        self.destroy()
 
 class InternetGroupsFrame(ttk.Frame):
     def __init__(self, parent, root):
@@ -15,7 +85,7 @@ class InternetGroupsFrame(ttk.Frame):
         self.internet_groups = []
         self.user_details = {}
         self.selected_user = None
-        self.selected_users_set = set()  # Novo: Armazena usuários selecionados
+        self.selected_users_set = set()
         
         # Carrega as configurações iniciais
         self.config = obter_configuracao()
@@ -35,7 +105,12 @@ class InternetGroupsFrame(ttk.Frame):
         search_frame = ttk.Frame(self)
         search_frame.grid(row=1, column=0, columnspan=3, sticky=tk.EW, pady=5)
         
-        ttk.Label(search_frame, text="Pesquisar Usuários:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(search_frame, text="Pesquisar por:").pack(side=tk.LEFT, padx=(0, 5))
+        self.search_type = ttk.Combobox(search_frame, values=["Nome", "Usuário"], state="readonly", width=10)
+        self.search_type.pack(side=tk.LEFT)
+        self.search_type.set("Nome")
+        
+        ttk.Label(search_frame, text="Termo:").pack(side=tk.LEFT, padx=(5, 5))
         self.search_var = tk.StringVar()
         self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=30)
         self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -90,7 +165,7 @@ class InternetGroupsFrame(ttk.Frame):
         self.reset_password_btn = ttk.Button(info_frame, text="Resetar Senha", command=self.reset_password)
         self.reset_password_btn.grid(row=3, column=0, columnspan=2, pady=5)
         
-        # NOVO BOTÃO PARA ATIVAR/DESATIVAR USUÁRIO
+        # Botão para ativar/desativar usuário
         self.toggle_status_btn = ttk.Button(info_frame, text="Ativar/Desativar", command=self.toggle_user_status)
         self.toggle_status_btn.grid(row=4, column=0, columnspan=2, pady=5)
         
@@ -109,7 +184,6 @@ class InternetGroupsFrame(ttk.Frame):
         
         ttk.Button(group_controls_frame, text="Adicionar", command=self.add_group_to_user).pack(side=tk.LEFT, padx=2)
         ttk.Button(group_controls_frame, text="Remover", command=self.remove_group_from_user).pack(side=tk.LEFT, padx=2)
-        # NOVO BOTÃO PARA ESPELHAR GRUPOS
         ttk.Button(group_controls_frame, text="Espelhar Grupos", command=self.mirror_groups).pack(side=tk.LEFT, padx=2)
         
         # Treeview para grupos
@@ -180,13 +254,11 @@ class InternetGroupsFrame(ttk.Frame):
 
         if not term:
             filtered_groups = self.internet_groups
-        
         else:
             filtered_groups = [g for g in self.internet_groups if term in g.lower()]
         
         current_text = combo.get()
         combo['values'] = filtered_groups
-
         combo.set(current_text)
     
     def load_known_groups(self):
@@ -208,11 +280,11 @@ class InternetGroupsFrame(ttk.Frame):
                 
                 if vals[0] == "[ ]":
                     vals[0] = "[X]"
-                    self.selected_users_set.add(username)  # Adiciona ao conjunto
+                    self.selected_users_set.add(username)
                 else:
                     vals[0] = "[ ]"
                     if username in self.selected_users_set:
-                        self.selected_users_set.remove(username)  # Remove do conjunto
+                        self.selected_users_set.remove(username)
                 
                 self.tree.item(item, values=vals)
     
@@ -273,11 +345,19 @@ class InternetGroupsFrame(ttk.Frame):
     
     def filter_users(self, event=None):
         term = self.search_var.get().lower()
+        search_type = self.search_type.get()
         self.tree.delete(*self.tree.get_children())
-        filtered = [u for u in self.all_users if term in u[0].lower()] if term else self.all_users
         
-        for cn, ou, status, is_disabled, groups in filtered:
-            # Verifica se o usuário está no conjunto de selecionados
+        if term:
+            if search_type == "Nome":
+                # Filtra pelo nome (cn)
+                filtered = [u for u in self.all_users if term in u[0].lower()]
+            else:  # Pesquisa por Usuário (sAMAccountName)
+                filtered = [u for u in self.all_users if term in u[1].lower()]
+        else:
+            filtered = self.all_users
+        
+        for cn, sam, ou, status, is_disabled, groups in filtered:
             selected_mark = "[X]" if cn in self.selected_users_set else "[ ]"
             tag = "disabled" if is_disabled else "active"
             self.tree.insert("", "end", values=(selected_mark, cn, ou, status, ", ".join(groups)), tags=(tag,))
@@ -293,16 +373,18 @@ class InternetGroupsFrame(ttk.Frame):
             
             self.status_label.config(text="Carregando usuários...", foreground="blue")
             self.all_users = []
-            self.selected_users_set.clear()  # Limpa seleções ao recarregar
+            self.selected_users_set.clear()
             
+            # Buscar tanto cn quanto sAMAccountName
             self.conn.search(
                 self.base_dn, 
                 '(&(objectClass=user)(objectCategory=person))', 
-                attributes=['cn', 'distinguishedName', 'userAccountControl', self.internet_group_attribute]
+                attributes=['cn', 'sAMAccountName', 'distinguishedName', 'userAccountControl', self.internet_group_attribute]
             )
             
             for entry in self.conn.entries:
                 cn = entry.cn.value
+                sam_account_name = entry.sAMAccountName.value if hasattr(entry, 'sAMAccountName') else cn
                 dn = entry.distinguishedName.value
                 ou = extract_ou_from_dn(dn)
                 disabled = is_account_disabled(entry.userAccountControl.value)
@@ -313,7 +395,8 @@ class InternetGroupsFrame(ttk.Frame):
                     groups = getattr(entry, self.internet_group_attribute).values
                     internet_groups = [g for g in groups if any(ig in g for ig in self.internet_groups)]
                 
-                self.all_users.append((cn, ou, status, disabled, internet_groups))
+                # Armazenar ambos cn e sAMAccountName
+                self.all_users.append((cn, sam_account_name, ou, status, disabled, internet_groups))
                 
             self.filter_users()
             self.status_label.config(text=f"{len(self.all_users)} usuários carregados", foreground="green")
@@ -435,10 +518,6 @@ class InternetGroupsFrame(ttk.Frame):
             messagebox.showerror("Erro", f"Não foi possível remover o grupo: {e}")
 
     def get_group_dn(self, group_name):
-        """
-        Obtém o DN de um grupo. Se a string de entrada já for um DN, 
-        retorna diretamente. Caso contrário, busca no AD.
-        """
         if group_name.lower().startswith('cn=') and 'ou=' in group_name.lower() and 'dc=' in group_name.lower():
             return group_name
         
@@ -525,7 +604,6 @@ class InternetGroupsFrame(ttk.Frame):
                         raise Exception("Usuário não encontrado")
                     user_dn = self.conn.entries[0].distinguishedName.value
                 
-                # Determinar a operação com base na ação
                 if action == "Adicionar grupo":
                     changes = {'member': [(MODIFY_ADD, [user_dn])]}
                 else:
@@ -569,30 +647,27 @@ class InternetGroupsFrame(ttk.Frame):
             messagebox.showerror("Erro", "Conecte-se primeiro com credenciais válidas")
             return
 
-        # Pedir nova senha
-        new_password = simpledialog.askstring("Resetar Senha", 
-                                            f"Digite a nova senha para {self.selected_user}:",
-                                            show='*', parent=self)
-        if not new_password:
-            return
-
-        # Confirmar senha
-        confirm_password = simpledialog.askstring("Confirmar Senha", 
-                                                "Confirme a nova senha:",
-                                                show='*', parent=self)
-        if new_password != confirm_password:
-            messagebox.showerror("Erro", "As senhas não coincidem")
+        dialog = PasswordResetDialog(self, self.selected_user)
+        self.wait_window(dialog)
+        
+        if not dialog.result:
             return
 
         try:
             user_dn = self.user_details[self.selected_user]['dn']
+            new_password = dialog.result['new_password']
             
-            # Codificar a nova senha conforme required pelo AD
             encoded_password = f'"{new_password}"'.encode('utf-16-le')
             
             changes = {
                 'unicodePwd': [(MODIFY_REPLACE, [encoded_password])]
             }
+            
+            if dialog.result['must_change']:
+                changes['pwdLastSet'] = [(MODIFY_REPLACE, [0])]
+                
+            if dialog.result['unlock_account']:
+                changes['lockoutTime'] = [(MODIFY_REPLACE, [0])]
             
             if self.conn.modify(user_dn, changes):
                 messagebox.showinfo("Sucesso", f"Senha resetada com sucesso para {self.selected_user}")
@@ -624,7 +699,6 @@ class InternetGroupsFrame(ttk.Frame):
         threading.Thread(target=self._thread_toggle_status, args=(selected_users,), daemon=True).start()
 
     def _get_selected_users(self):
-        # Retorna os usuários selecionados a partir do conjunto
         return list(self.selected_users_set)
     
     def _thread_toggle_status(self, users):
@@ -640,7 +714,6 @@ class InternetGroupsFrame(ttk.Frame):
                     errors += 1
                     continue
 
-                # Busca o estado atual do usuário
                 self.conn.search(
                     user_dn,
                     '(objectClass=user)',
@@ -652,7 +725,7 @@ class InternetGroupsFrame(ttk.Frame):
                     continue
 
                 current_uac = self.conn.entries[0].userAccountControl.value
-                new_uac = current_uac ^ 2  # Flip the disabled bit
+                new_uac = current_uac ^ 2
 
                 changes = {
                     'userAccountControl': [(MODIFY_REPLACE, [new_uac])]
@@ -660,7 +733,6 @@ class InternetGroupsFrame(ttk.Frame):
 
                 if self.conn.modify(user_dn, changes):
                     success += 1
-                    # Atualiza o status localmente
                     self._update_local_user_status(username, new_uac)
                 else:
                     errors += 1
@@ -674,7 +746,6 @@ class InternetGroupsFrame(ttk.Frame):
                 text=f"Processando: {i+1}/{total} | Sucessos: {success} | Erros: {errors}"
             ))
 
-        # Atualiza the interface
         self.root.after(0, self.load_users)
         if self.selected_user:
             self.root.after(0, lambda: self.show_user_details(self.selected_user))
@@ -707,35 +778,31 @@ class InternetGroupsFrame(ttk.Frame):
         disabled = is_account_disabled(new_uac)
         status = "Desativado" if disabled else "Ativo"
         
-        # Atualiza no dicionário de detalhes se existir
         if username in self.user_details:
             self.user_details[username]['status'] = status
 
-        # Atualiza na lista de usuários
         for i, user in enumerate(self.all_users):
             if user[0] == username:
                 self.all_users[i] = (
                     user[0],
                     user[1],
+                    user[2],
                     status,
                     disabled,
-                    user[4]
+                    user[5]
                 )
                 break
     
-    # NOVOS MÉTODOS PARA ESPELHAR GRUPOS
     def mirror_groups(self):
         if not self.conn or not self.conn.bound:
             messagebox.showerror("Erro", "Conecte-se primeiro com credenciais válidas")
             return
 
-        # Obter usuário de origem
         source_user = self.selected_user
         if not source_user:
             messagebox.showwarning("Aviso", "Selecione um usuário de origem primeiro")
             return
 
-        # Obter usuários de destino
         target_users = self._get_selected_users()
         if not target_users:
             messagebox.showwarning("Aviso", "Selecione pelo menos um usuário destino")
@@ -762,7 +829,6 @@ class InternetGroupsFrame(ttk.Frame):
             self.root.after(0, lambda: self.progress_var.set(0))
             self.root.after(0, lambda: self.progress_bar.config(maximum=total))
 
-            # Obter grupos do usuário origem
             source_groups = self._get_user_internet_groups(source_user)
             if source_groups is None:
                 self.root.after(0, lambda: messagebox.showerror("Erro", 
@@ -784,7 +850,6 @@ class InternetGroupsFrame(ttk.Frame):
                     text=f"Processando: {i+1}/{total} | Sucessos: {success} | Erros: {errors}"
                 ))
 
-            # Atualizar interface
             self.root.after(0, self.load_users)
             msg = f"Espelhamento concluído: {success} sucesso(s), {errors} erro(s)"
             self.root.after(0, lambda: self.status_label.config(
@@ -798,7 +863,6 @@ class InternetGroupsFrame(ttk.Frame):
             self.root.after(0, lambda: messagebox.showerror("Erro", f"Falha no espelhamento: {e}"))
 
     def _get_user_internet_groups(self, username):
-        """Obtém a lista de grupos de internet de um usuário"""
         try:
             self.conn.search(
                 self.base_dn,
@@ -813,27 +877,22 @@ class InternetGroupsFrame(ttk.Frame):
         return None
 
     def _apply_groups_to_user(self, target_user, target_groups):
-        """Aplica a lista de grupos ao usuário destino"""
         try:
             user_dn = self._get_user_dn(target_user)
             if not user_dn:
                 return False
 
-            # Obter grupos atuais do usuário
             current_groups = self._get_user_internet_groups(target_user) or []
 
-            # Determinar mudanças necessárias
             groups_to_add = [g for g in target_groups if g not in current_groups]
             groups_to_remove = [g for g in current_groups if g not in target_groups]
 
-            # Aplicar remoções
             for group in groups_to_remove:
                 group_dn = self.get_group_dn(group)
                 if group_dn:
                     changes = {'member': [(MODIFY_DELETE, [user_dn])]}
                     self.conn.modify(group_dn, changes)
 
-            # Aplicar adições
             for group in groups_to_add:
                 group_dn = self.get_group_dn(group)
                 if group_dn:

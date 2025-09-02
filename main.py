@@ -20,7 +20,6 @@ class App:
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-       
         dashboard_tab = DashboardFrame(self.notebook)
         self.notebook.add(dashboard_tab, text="Dashboard")
         

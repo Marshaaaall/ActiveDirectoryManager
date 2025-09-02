@@ -1604,3 +1604,7 @@ Name: 0, dtype: object: create_user() missing 1 required positional argument: 'u
 2025-08-28 10:51:17,842 - ERROR - Grupo CN=g_fg_analistas_ti,OU=Grupos_Fortigate,OU=MOTIVA,DC=motiva,DC=matriz não encontrado em nenhuma base de busca
 2025-08-28 10:55:16,838 - ERROR - Grupo CN=g_fg_analistas_ti,OU=Grupos_Fortigate,OU=MOTIVA,DC=motiva,DC=matriz não encontrado em nenhuma base de busca
 2025-08-28 11:55:32,004 - ERROR - Erro ao carregar usuários: 'BASE_Dn'
+2025-08-28 14:52:47,703 - ERROR - Erro ao carregar usuários: socket sending error[WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+2025-08-29 08:43:07,571 - ERROR - Erro ao carregar detalhes do usuário Kaue Goncalves Seixas: socket sending error[WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+2025-08-29 08:53:58,849 - INFO - Usuário criado: cn=Maicon Cesar Rodrigues,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-08-29 11:56:31,437 - ERROR - Erro ao carregar detalhes do usuário Lucas Antonio Bento Moreto: socket sending error[WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
