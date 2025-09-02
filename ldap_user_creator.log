@@ -1608,3 +1608,26 @@ Name: 0, dtype: object: create_user() missing 1 required positional argument: 'u
 2025-08-29 08:43:07,571 - ERROR - Erro ao carregar detalhes do usuário Kaue Goncalves Seixas: socket sending error[WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
 2025-08-29 08:53:58,849 - INFO - Usuário criado: cn=Maicon Cesar Rodrigues,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
 2025-08-29 11:56:31,437 - ERROR - Erro ao carregar detalhes do usuário Lucas Antonio Bento Moreto: socket sending error[WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+2025-09-02 10:38:35,710 - ERROR - Erro ao carregar detalhes do usuário usr_bkp: socket sending error[WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+2025-09-02 10:38:44,691 - ERROR - Erro ao carregar detalhes do usuário Clementina de Jesus (teste - Flavia não mexer): malformed filter
+2025-09-02 10:38:50,748 - ERROR - Erro ao carregar detalhes do usuário Clementina de Jesus (teste - Flavia não mexer): malformed filter
+2025-09-02 11:43:28,590 - ERROR - Erro ao carregar usuários: 'InternetGroupsFrame' object has no attribute 'filter_selected'
+2025-09-02 13:42:33,382 - ERROR - Erro de conexão: automatic bind not successful - invalidCredentials
+2025-09-02 14:36:14,805 - ERROR - Erro ao criar usuário: operationsError
+2025-09-02 14:36:14,806 - ERROR - Erro ao criar usuário Kaio Teste: Erro ao criar usuário: operationsError
+2025-09-02 14:36:14,813 - ERROR - Erro ao criar usuário: operationsError
+2025-09-02 14:36:14,813 - ERROR - Erro ao criar usuário Seixas Teste: Erro ao criar usuário: operationsError
+2025-09-02 14:54:06,061 - WARNING - Erro ao verificar permissões: 'Connection' object has no attribute 'has_access_rights'
+2025-09-02 14:54:31,992 - INFO - Usuário criado: CN=Kaio Teste,OU=ASSISTENTES,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-09-02 14:54:32,000 - ERROR - Erro ao definir senha: unwillingToPerform
+2025-09-02 14:54:32,000 - ERROR - Erro ao criar usuário Kaio Teste: Erro ao definir senha: unwillingToPerform
+2025-09-02 14:54:32,018 - INFO - Usuário criado: CN=Seixas Teste,OU=ASSISTENTES,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-09-02 14:54:32,022 - ERROR - Erro ao definir senha: unwillingToPerform
+2025-09-02 14:54:32,022 - ERROR - Erro ao criar usuário Seixas Teste: Erro ao definir senha: unwillingToPerform
+2025-09-02 15:06:24,422 - WARNING - Erro ao verificar permissões: 'Connection' object has no attribute 'has_access_rights'
+2025-09-02 15:06:46,483 - ERROR - Erro ao criar usuário: entryAlreadyExists
+2025-09-02 15:06:46,483 - ERROR - Erro ao criar usuário Kaio Teste: Erro ao criar usuário: entryAlreadyExists
+2025-09-02 15:06:46,495 - ERROR - Erro ao criar usuário: entryAlreadyExists
+2025-09-02 15:06:46,495 - ERROR - Erro ao criar usuário Seixas Teste: Erro ao criar usuário: entryAlreadyExists
+2025-09-02 15:08:07,929 - INFO - Usuário criado: CN=Kaio Teste,OU=ASSISTENTES,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz
+2025-09-02 15:08:08,158 - INFO - Usuário criado: CN=Seixas Teste,OU=ASSISTENTES,OU=ACESSOS,OU=TI,OU=USUARIOS,OU=MOTIVA,DC=motiva,DC=matriz

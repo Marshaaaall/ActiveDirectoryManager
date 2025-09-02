@@ -1,441 +1,553 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import threading
-import logging
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 import pandas as pd
-import os
-from datetime import datetime
-import ssl
-from config import DOMINIO_AD, SERVIDOR_AD, BASE_DN, logging
-from ldap3 import Server, Connection, Tls, SUBTREE, SIMPLE, NTLM
+import threading
+import unicodedata
+import re
+from config import logging
+from config import DOMINIO_AD
+from ldap_utils import conectar_ldap
+from ldap3 import MODIFY_REPLACE, MODIFY_ADD
 from ldap3.utils.dn import escape_rdn
 
 
-class MassUsersFrame(ttk.Frame):
-    """
-    Frame para a aba "Movimento em Massa", integrado à aplicação principal.
-    """
+class MassImportFrame(ttk.Frame):
     def __init__(self, parent, root):
-        super().__init__(parent, padding="10")
+        super().__init__(parent)
         self.root = root
-        self.conn_mass_move = None
-        self.mass_move_data = None
-        self.ous_list = []
+        self.import_data = None
+        self.conn_mass = None
+        self.mirror_user_ou = None
+        self.all_template_users_with_status = []
+        self.template_dns = []
+        self.template_ous = []
+        self.template_logins = []
+        self.import_results = []
+        self.template_object_classes = []
+        self.template_member_of = []
 
         self._setup_ui()
 
     def _setup_ui(self):
-        """
-        Configura a interface gráfica da aba.
-        """
-        # Título
-        ttk.Label(self, text="Mover Usuários em Massa", font=("Arial", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
+        ttk.Label(self, text="Importação em Massa via Excel", font=("Arial", 14)).grid(row=0, column=0, columnspan=2, pady=10)
 
-        # Instruções
         instructions = (
             "Instruções:\n"
-            "1. Prepare uma planilha Excel com a coluna 'Usuário' (nome completo ou login).\n"
-            "2. Insira suas credenciais e clique em 'Verificar Credenciais'.\n"
-            "3. Selecione a OU de destino para onde os usuários serão movidos.\n"
-            "4. Clique em 'Selecionar Planilha' e visualize os dados carregados na tabela abaixo.\n"
-            "5. Clique em 'Mover Usuários da Planilha' para iniciar a operação."
+            "1. Prepare uma planilha Excel com as colunas: 'Nome', 'Sobrenome'\n"
+            "2. Clique em 'Selecionar Planilha' para carregar os dados\n"
+            "3. Selecione um usuário espelho para copiar a OU\n"
+            "4. Clique em 'Iniciar Importação' para criar todos os usuários"
         )
         ttk.Label(self, text=instructions, justify=tk.LEFT).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=10)
 
-        # --- Seção de Credenciais ---
-        cred_frame = ttk.LabelFrame(self, text="1. Credenciais do Administrador", padding=10)
-        cred_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=10)
-        cred_frame.columnconfigure(1, weight=1)
+        ttk.Button(self, text="Selecionar Planilha", command=self.select_spreadsheet).grid(row=2, column=0, columnspan=2, pady=10)
 
-        ttk.Label(cred_frame, text="Usuário de Rede:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        user_frame = ttk.Frame(cred_frame)
-        user_frame.grid(row=0, column=1, sticky=tk.EW)
-        ttk.Label(user_frame, text=f"{DOMINIO_AD.upper()}\\", foreground="gray").pack(side=tk.LEFT)
-        self.mass_move_admin_user = ttk.Entry(user_frame)
-        self.mass_move_admin_user.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.tree_frame = ttk.Frame(self)
+        self.tree_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=10)
 
-        ttk.Label(cred_frame, text="Senha:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        self.mass_move_admin_password = ttk.Entry(cred_frame, show="*")
-        self.mass_move_admin_password.grid(row=1, column=1, pady=5, sticky=tk.EW)
+        scrollbar = ttk.Scrollbar(self.tree_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.mass_move_test_btn = ttk.Button(
-            cred_frame,
-            text="Verificar Credenciais",
-            command=self.verify_mass_move_credentials
-        )
-        self.mass_move_test_btn.grid(row=2, column=0, columnspan=2, pady=10)
-        self.mass_move_connection_status = ttk.Label(cred_frame, text="", font=("Arial", 9))
-        self.mass_move_connection_status.grid(row=3, column=0, columnspan=2)
-
-        # --- Seção de Destino e Planilha ---
-        data_frame = ttk.LabelFrame(self, text="2. Destino e Dados", padding=10)
-        data_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=10)
-        data_frame.columnconfigure(1, weight=1)
-
-        ttk.Label(data_frame, text="Mover para OU:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.mass_move_target_ou = ttk.Combobox(data_frame, state="readonly")
-        self.mass_move_target_ou.grid(row=0, column=1, pady=5, sticky=tk.EW)
-
-        # Frame para os botões de planilha
-        file_buttons_frame = ttk.Frame(data_frame)
-        file_buttons_frame.grid(row=1, column=0, columnspan=2, pady=(10,0))
-
-        self.mass_move_select_btn = ttk.Button(
-            file_buttons_frame,
-            text="Selecionar Planilha",
-            command=self.select_mass_move_spreadsheet,
-            state=tk.DISABLED
-        )
-        self.mass_move_select_btn.pack(side=tk.LEFT, padx=(0, 5))
-
-        # NOVO: Botão para visualizar dados em uma nova janela
-        self.view_data_btn = ttk.Button(
-            file_buttons_frame,
-            text="Visualizar Dados da Planilha",
-            command=self.show_spreadsheet_data,
-            state=tk.DISABLED 
-        )
-        self.view_data_btn.pack(side=tk.LEFT, padx=5)
-
-
-        # --- Seção de Visualização e Ação ---
-        action_frame = ttk.LabelFrame(self, text="3. Visualização e Execução", padding=10)
-        action_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=10)
-        action_frame.columnconfigure(0, weight=1)
-        action_frame.rowconfigure(0, weight=1)
-
-        # Tabela (Treeview) para mostrar os dados da planilha
-        tree_frame = ttk.Frame(action_frame)
-        tree_frame.grid(row=0, column=0, columnspan=2, sticky="nsew", pady=5)
-        tree_frame.rowconfigure(0, weight=1)
-        tree_frame.columnconfigure(0, weight=1)
-
-        # Adicionando scrollbars horizontal e vertical
-        vsb = ttk.Scrollbar(tree_frame, orient="vertical")
-        hsb = ttk.Scrollbar(tree_frame, orient="horizontal")
-        
-        self.mass_move_tree = ttk.Treeview(
-            tree_frame,
+        self.tree = ttk.Treeview(
+            self.tree_frame,
+            columns=("Nome", "Sobrenome", "Status"),
             show="headings",
-            yscrollcommand=vsb.set,
-            xscrollcommand=hsb.set,
-            height=8
+            yscrollcommand=scrollbar.set,
+            height=10
         )
-        
-        vsb.config(command=self.mass_move_tree.yview)
-        hsb.config(command=self.mass_move_tree.xview)
+        self.tree.pack(fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.tree.yview)
 
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        hsb.pack(side=tk.BOTTOM, fill=tk.X)
-        self.mass_move_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        for col in ("Nome", "Sobrenome", "Status"):
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=150 if col != "Status" else 100)
 
-        self.mass_move_btn = ttk.Button(
-            action_frame,
-            text="Mover Usuários da Planilha",
-            command=self.start_mass_move,
-            state=tk.DISABLED
-        )
-        self.mass_move_btn.grid(row=1, column=0, columnspan=2, pady=10)
+        ttk.Separator(self, orient=tk.HORIZONTAL).grid(row=4, column=0, columnspan=2, sticky=tk.EW, pady=10)
+        ttk.Label(self, text="Credenciais do Grupo de TI", font=("Arial", 12)).grid(row=5, column=0, columnspan=2, pady=5)
 
-        self.mass_move_progress_var = tk.DoubleVar()
-        self.mass_move_progress_bar = ttk.Progressbar(
-            action_frame,
-            orient=tk.HORIZONTAL,
-            length=300,
-            mode='determinate',
-            variable=self.mass_move_progress_var
-        )
-        self.mass_move_progress_bar.grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
+        ttk.Label(self, text="Usuário de Rede:").grid(row=6, column=0, sticky=tk.W)
+        user_frame = ttk.Frame(self)
+        user_frame.grid(row=6, column=1, sticky=tk.W)
+        ttk.Label(user_frame, text=f"{DOMINIO_AD}\\", foreground="gray").pack(side=tk.LEFT)
+        self.admin_user = ttk.Entry(user_frame, width=25)
+        self.admin_user.pack(side=tk.LEFT)
 
-        self.mass_move_status = ttk.Label(action_frame, text="Aguardando ação...", foreground="blue")
-        self.mass_move_status.grid(row=3, column=0, columnspan=2, pady=5)
+        ttk.Label(self, text="Senha:").grid(row=7, column=0, sticky=tk.W)
+        self.admin_password = ttk.Entry(self, width=30, show="*")
+        self.admin_password.grid(row=7, column=1, pady=5, sticky=tk.EW)
+
+        ttk.Label(self, text="Usuário Espelho (para copiar OU):").grid(row=8, column=0, sticky=tk.W)
+        template_frame = ttk.Frame(self)
+        template_frame.grid(row=8, column=1, pady=5, sticky=tk.EW)
+
+        self.mirror_user = ttk.Combobox(template_frame, width=25)
+        self.mirror_user.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.mirror_user.set("Digite para pesquisar...")
+        self.mirror_user.bind("<KeyRelease>", self.filter_template_users_with_status)
+
+        ttk.Button(template_frame, text="Limpar", width=8, command=self.clear_template_search).pack(side=tk.LEFT, padx=(5, 0))
+
+        ttk.Button(self, text="Verificar Credenciais", command=self.verify_mass_credentials).grid(row=9, column=0, columnspan=2, pady=10)
+        self.mass_connection_status = ttk.Label(self, text="", font=("Arial", 9))
+        self.mass_connection_status.grid(row=10, column=0, columnspan=2)
+
+        self.import_btn = ttk.Button(self, text="Iniciar Importação", command=self.start_mass_import, state=tk.DISABLED)
+        self.import_btn.grid(row=11, column=0, columnspan=2, pady=20)
+
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(self, orient=tk.HORIZONTAL, length=300, mode='determinate', variable=self.progress_var)
+        self.progress_bar.grid(row=12, column=0, columnspan=2, pady=10)
+
+        self.import_status = ttk.Label(self, text="", foreground="blue")
+        self.import_status.grid(row=13, column=0, columnspan=2)
 
         self.columnconfigure(1, weight=1)
-        self.rowconfigure(4, weight=1)
+        self.rowconfigure(3, weight=1)
 
-    def verify_mass_move_credentials(self):
-        username = self.mass_move_admin_user.get().strip()
-        password = self.mass_move_admin_password.get()
-
-        if not username or not password:
-            messagebox.showerror("Erro de Validação", "Preencha os campos de usuário e senha.")
-            return
-
-        self.mass_move_connection_status.config(text="Verificando...", foreground="orange")
-        self.update_idletasks()
-
-        try:
-            tls_config = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLSv1_2)
-            server = Server(SERVIDOR_AD, use_ssl=True, tls=tls_config, port=636)
-
-            try:
-                conn = Connection(server, user=f"{username}@{DOMINIO_AD}.matriz", password=password, authentication=SIMPLE, auto_bind=True)
-            except Exception:
-                logging.warning("Autenticação SIMPLE falhou. Tentando NTLM.")
-                conn = Connection(server, user=f"{DOMINIO_AD}\\{username}", password=password, authentication=NTLM, auto_bind=True)
-
-            self.conn_mass_move = conn
-            logging.info(f"Conexão bem-sucedida para o usuário: {username}")
-
-            if self.load_ous_for_mass_move():
-                self.mass_move_connection_status.config(text="✅ Credenciais validadas com sucesso!", foreground="green")
-                self.mass_move_select_btn.config(state=tk.NORMAL)
-                self.mass_move_status.config(text="Pronto para carregar a planilha e mover usuários.", foreground="blue")
-            else:
-                raise Exception("Falha ao carregar as OUs do Active Directory.")
-
-        except Exception as e:
-            error_msg = f"Erro de conexão: {str(e)}"
-            logging.error(f"Falha na verificação de credenciais para '{username}': {error_msg}")
-            self.mass_move_connection_status.config(text=f"❌ {error_msg}", foreground="red")
-            self.mass_move_select_btn.config(state=tk.DISABLED)
-            self.mass_move_btn.config(state=tk.DISABLED)
-
-    def load_ous_for_mass_move(self):
-        if not self.conn_mass_move or not self.conn_mass_move.bound:
-            messagebox.showerror("Erro de Conexão", "A conexão com o AD não está ativa.")
-            return False
-
-        try:
-            self.mass_move_status.config(text="Carregando OUs...", foreground="orange")
-            self.update_idletasks()
-            self.ous_list = ["Domínio Raiz"]
-            self.conn_mass_move.search(
-                search_base=BASE_DN,
-                search_filter='(objectClass=organizationalUnit)',
-                attributes=['distinguishedName'],
-                search_scope=SUBTREE
-            )
-            for entry in self.conn_mass_move.entries:
-                self.ous_list.append(entry.distinguishedName.value)
-            self.ous_list.sort()
-            self.mass_move_target_ou['values'] = self.ous_list
-            if self.ous_list:
-                self.mass_move_target_ou.current(0)
-            logging.info(f"{len(self.ous_list)} OUs carregadas com sucesso.")
-            return True
-        except Exception as e:
-            error_msg = f"Erro ao carregar OUs: {str(e)}"
-            logging.error(error_msg)
-            self.mass_move_status.config(text=error_msg, foreground="red")
-            return False
-
-    def select_mass_move_spreadsheet(self):
-        file_path = filedialog.askopenfilename(
-            title="Selecione a planilha Excel",
-            filetypes=[("Excel Files", "*.xlsx *.xls")]
-        )
+    def select_spreadsheet(self):
+        file_path = filedialog.askopenfilename(title="Selecione a planilha Excel", filetypes=[("Excel Files", "*.xlsx *.xls")])
         if not file_path:
             return
-
         try:
-            df = pd.read_excel(file_path, dtype=str)
-            if 'Usuário' not in df.columns:
-                messagebox.showerror("Erro de Formato", "A planilha deve conter uma coluna chamada 'Usuário'.")
+            df = pd.read_excel(file_path)
+            required_cols = {"Nome", "Sobrenome"}
+            missing = required_cols - set(df.columns)
+            if missing:
+                messagebox.showerror("Erro", f"Faltam colunas obrigatórias: {', '.join(missing)}")
                 return
 
-            df.dropna(subset=['Usuário'], inplace=True)
-            df.fillna('', inplace=True)
-            
-            self.mass_move_data = df
-            
-            # ATUALIZADO: Chama a função para popular a tabela principal
-            self.populate_main_treeview()
-
-            self.mass_move_status.config(text=f"Planilha carregada com {len(df)} usuários.", foreground="green")
-            self.mass_move_btn.config(state=tk.NORMAL)
-            self.view_data_btn.config(state=tk.NORMAL) # Habilita o botão de visualização
-            logging.info(f"Planilha '{file_path}' carregada com {len(df)} usuários.")
-
+            df = df.fillna('')
+            self.import_data = df
+            self._load_tree(df)
+            self.import_status.config(text=f"Planilha carregada com {len(df)} registros", foreground="green")
         except Exception as e:
-            error_msg = f"Falha ao ler a planilha: {str(e)}"
-            messagebox.showerror("Erro de Leitura", error_msg)
-            logging.error(error_msg)
-            self.mass_move_status.config(text=error_msg, foreground="red")
-            self.mass_move_btn.config(state=tk.DISABLED)
-            self.view_data_btn.config(state=tk.DISABLED)
+            logging.error(f"Erro ao ler planilha: {e}")
+            messagebox.showerror("Erro", f"Falha ao ler planilha: {e}")
 
-    def populate_main_treeview(self):
-        """
-        Limpa e popula a tabela (Treeview) na tela principal com os dados da planilha.
-        """
-        # Limpa a visualização anterior
-        for item in self.mass_move_tree.get_children():
-            self.mass_move_tree.delete(item)
+    def _load_tree(self, df):
+        self.tree.delete(*self.tree.get_children())
+        for _, row in df.iterrows():
+            self.tree.insert("", "end", values=(row["Nome"], row["Sobrenome"], "Pendente"))
 
-        if not hasattr(self, 'mass_move_data') or self.mass_move_data.empty:
+    def clear_template_search(self):
+        self.mirror_user.set('')
+        self.mirror_user['values'] = self.all_template_users_with_status
+        if self.all_template_users_with_status:
+            self.mirror_user.set("Digite para pesquisar...")
+
+    def filter_template_users_with_status(self, event):
+        search_term = self.mirror_user.get().strip().lower()
+        if not search_term:
+            self.mirror_user['values'] = self.all_template_users_with_status
+            return
+        filtered = [user for user in self.all_template_users_with_status if search_term in user.lower()]
+        self.mirror_user['values'] = filtered
+
+    def load_template_users(self):
+        """Carrega todos os usuários disponíveis para usar como modelo no AD"""
+        if not hasattr(self, "conn_mass") or not self.conn_mass.bound:
+            messagebox.showerror("Erro", "Conecte-se com credenciais válidas antes de carregar os modelos.")
             return
 
-        # Define as colunas da tabela com base na planilha
-        columns = list(self.mass_move_data.columns)
-        self.mass_move_tree["columns"] = columns
-        
-        # Adiciona os cabeçalhos
-        for col in columns:
-            self.mass_move_tree.heading(col, text=col)
-            self.mass_move_tree.column(col, width=150, anchor='w')
-
-        # Adiciona os dados
-        for _, row in self.mass_move_data.iterrows():
-            self.mass_move_tree.insert("", "end", values=list(row))
-
-    def show_spreadsheet_data(self):
-        """
-        Abre uma nova janela (Toplevel) para exibir todos os dados da planilha carregada.
-        """
-        if not hasattr(self, 'mass_move_data') or self.mass_move_data.empty:
-            messagebox.showinfo("Nenhum Dado", "Nenhuma planilha foi carregada ainda.")
-            return
-
-        view_window = tk.Toplevel(self.root)
-        view_window.title("Visualizador de Dados da Planilha")
-        view_window.geometry("800x400")
-
-        frame = ttk.Frame(view_window, padding=10)
-        frame.pack(fill=tk.BOTH, expand=True)
-
-        vsb = ttk.Scrollbar(frame, orient="vertical")
-        hsb = ttk.Scrollbar(frame, orient="horizontal")
-        
-        tree = ttk.Treeview(frame, yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        vsb.config(command=tree.yview)
-        hsb.config(command=tree.xview)
-
-        columns = list(self.mass_move_data.columns)
-        tree["columns"] = columns
-        tree["show"] = "headings"
-
-        for col in columns:
-            tree.heading(col, text=col)
-            tree.column(col, width=120, anchor='w')
-
-        for _, row in self.mass_move_data.iterrows():
-            tree.insert("", "end", values=list(row))
-
-        vsb.pack(side='right', fill='y')
-        hsb.pack(side='bottom', fill='x')
-        tree.pack(side='left', fill='both', expand=True)
-
-        close_btn = ttk.Button(view_window, text="Fechar", command=view_window.destroy)
-        close_btn.pack(pady=10)
-
-        view_window.transient(self.root)
-        view_window.grab_set()
-        self.root.wait_window(view_window)
-
-
-    def start_mass_move(self):
-        if not hasattr(self, 'mass_move_data') or self.mass_move_data.empty:
-            messagebox.showwarning("Aviso", "Nenhuma planilha carregada ou a planilha está vazia.")
-            return
-
-        target_ou = self.mass_move_target_ou.get()
-        if not target_ou:
-            messagebox.showerror("Erro de Validação", "Selecione uma OU de destino.")
-            return
-
-        confirm = messagebox.askyesno(
-            "Confirmar Movimentação",
-            f"Você tem certeza que deseja mover {len(self.mass_move_data)} usuário(s) para a OU:\n{target_ou}?"
-        )
-        if not confirm:
-            return
-
-        self.mass_move_select_btn.config(state=tk.DISABLED)
-        self.mass_move_btn.config(state=tk.DISABLED)
-        self.mass_move_test_btn.config(state=tk.DISABLED)
-        self.view_data_btn.config(state=tk.DISABLED)
-
-        total_users = len(self.mass_move_data)
-        self.mass_move_progress_var.set(0)
-        self.mass_move_progress_bar["maximum"] = total_users
-        self.mass_move_status.config(text=f"Iniciando movimentação de {total_users} usuários...", foreground="blue")
-
-        threading.Thread(
-            target=self.mass_move_thread,
-            args=(target_ou,),
-            daemon=True
-        ).start()
-
-    def mass_move_thread(self, target_ou):
-        success_count = 0
-        error_count = 0
-        log_details = []
-        total_users = len(self.mass_move_data)
-
-        for i, row in self.mass_move_data.iterrows():
-            username = str(row['Usuário']).strip()
-            if not username:
-                continue
-
-            try:
-                search_filter = f"(|(cn={escape_rdn(username)})(sAMAccountName={escape_rdn(username)}))"
-                self.conn_mass_move.search(
-                    search_base=BASE_DN,
-                    search_filter=search_filter,
-                    attributes=['distinguishedName'],
-                    search_scope=SUBTREE,
-                    size_limit=1
-                )
-
-                if not self.conn_mass_move.entries:
-                    raise Exception(f"Usuário não encontrado no AD.")
-
-                user_dn = self.conn_mass_move.entries[0].distinguishedName.value
-                new_parent = BASE_DN if target_ou == "Domínio Raiz" else target_ou
-                rdn = user_dn.split(',', 1)[0]
-                was_moved = self.conn_mass_move.modify_dn(user_dn, rdn, new_superior=new_parent)
-
-                if not was_moved:
-                    raise Exception(f"Falha na API do LDAP: {self.conn_mass_move.last_error}")
-
-                success_count += 1
-                log_details.append(f"✅ SUCESSO: '{username}' movido para '{new_parent}'.")
-                logging.info(f"Usuário '{username}' (DN: {user_dn}) movido com sucesso para '{new_parent}'.")
-
-            except Exception as e:
-                error_count += 1
-                error_msg = str(e)
-                log_details.append(f"❌ ERRO: Falha ao mover '{username}'. Motivo: {error_msg}")
-                logging.error(f"Erro ao mover '{username}': {error_msg}")
-
-            self.root.after(0, self.update_mass_move_progress, i + 1, success_count, error_count, total_users)
-
-        self.root.after(0, self.finish_mass_move, success_count, error_count, total_users, log_details)
-
-    def update_mass_move_progress(self, current, success, errors, total):
-        self.mass_move_progress_var.set(current)
-        self.mass_move_status.config(
-            text=f"Processando: {current}/{total} | Sucessos: {success} | Erros: {errors}",
-            foreground="blue"
-        )
-
-    def finish_mass_move(self, success, errors, total, log_details):
-        result_summary = (
-            f"Movimentação em Massa Concluída!\n\n"
-            f"Total de Usuários Processados: {total}\n"
-            f"Sucessos: {success}\n"
-            f"Erros: {errors}"
-        )
-
+        conn = self.conn_mass
         try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            log_filename = f"log_movimentacao_{timestamp}.txt"
-            
-            with open(log_filename, 'w', encoding='utf-8') as f:
-                f.write(result_summary + "\n\n" + "="*50 + "\n\n")
-                f.write("\n".join(log_details))
-            
-            log_path = os.path.abspath(log_filename)
-            final_message = result_summary + f"\n\nUm log detalhado foi salvo em:\n{log_path}"
-            self.mass_move_status.config(text=f"Operação concluída. Log salvo em: {log_path}", foreground="green" if errors == 0 else "orange")
-            messagebox.showinfo("Operação Concluída", final_message)
+            # Busca todos usuários do domínio
+            search_base = conn.server.info.other["defaultNamingContext"][0]
+            conn.search(
+                search_base=search_base,
+                search_filter="(&(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))",
+                attributes=["cn", "distinguishedName", "sAMAccountName"]
+            )
+
+            self.all_template_users_with_status = []
+            self.template_dns = []
+            self.template_ous = []
+            self.template_logins = []
+
+            for entry in conn.entries:
+                cn = str(entry.cn)
+                dn = str(entry.distinguishedName)
+                sam = str(entry.sAMAccountName)
+                ou = ",".join(dn.split(",")[1:])
+
+                self.all_template_users_with_status.append(f"{cn} ({sam})")
+                self.template_dns.append(dn)
+                self.template_ous.append(ou)
+                self.template_logins.append(sam)
+
+            # Preenche combobox
+            self.mirror_user["values"] = self.all_template_users_with_status
 
         except Exception as e:
-            logging.error(f"Falha ao salvar o arquivo de log: {e}")
-            messagebox.showerror("Erro de Log", f"Não foi possível salvar o arquivo de log: {e}")
+            messagebox.showerror("Erro", f"Falha ao carregar usuários: {e}")
 
-        self.mass_move_select_btn.config(state=tk.NORMAL)
-        self.mass_move_btn.config(state=tk.NORMAL)
-        self.mass_move_test_btn.config(state=tk.NORMAL)
-        self.view_data_btn.config(state=tk.NORMAL)
+    def verify_mass_credentials(self):
+        username = self.admin_user.get().strip()
+        password = self.admin_password.get()
+        if not username or not password:
+            messagebox.showerror("Erro", "Preencha usuário e senha")
+            return
+        
+        try:
+            self.conn_mass = conectar_ldap(username, password)
+            if self.conn_mass.bound:
+                self.mass_connection_status.config(text="✅ Credenciais válidas", foreground="green")
+                self.import_btn.config(state=tk.NORMAL)
+                
+                # Verificar se o usuário tem permissões de escrita
+                try:
+                    search_base = self.conn_mass.server.info.other["defaultNamingContext"][0]
+                    if not self.conn_mass.has_access_rights(search_base, ['write']):
+                        logging.warning("Não foi possível verificar permissões de escrita")
+                except Exception as perm_error:
+                    logging.warning(f"Erro ao verificar permissões: {perm_error}")
+                
+                # Carrega usuários para o combobox
+                self.load_template_users()
+            else:
+                raise Exception("Falha na autenticação LDAP")
+        except Exception as e:
+            self.mass_connection_status.config(text=f"❌ {e}", foreground="red")
+            self.import_btn.config(state=tk.DISABLED)
+
+    def ou_exists(self, ou_dn):
+        """Verifica se uma OU existe no AD"""
+        try:
+            return self.conn_mass.search(
+                search_base=ou_dn,
+                search_filter='(objectClass=*)',
+                search_scope='BASE',
+                attributes=['distinguishedName']
+            )
+        except:
+            return False
+
+    def validate_user_data(self, first_name, last_name):
+        """Valida se os nomes não contêm caracteres inválidos"""
+        invalid_chars = r'[<>"\\|@=,;+*?]'
+        if re.search(invalid_chars, first_name) or re.search(invalid_chars, last_name):
+            raise ValueError("Nome contém caracteres inválidos")
+
+    def start_mass_import(self):
+        if self.import_data is None or self.import_data.empty:
+            messagebox.showwarning("Aviso", "Nenhuma planilha carregada")
+            return
+        if not self.conn_mass or not self.conn_mass.bound:
+            messagebox.showwarning("Aviso", "Conexão LDAP não verificada")
+            return
+
+        template_input = self.mirror_user.get().strip()
+        if not template_input:
+            messagebox.showwarning("Aviso", "Informe o usuário espelho")
+            return
+
+        # Encontrar o modelo selecionado
+        selected_index = None
+        for i, user in enumerate(self.all_template_users_with_status):
+            if template_input.lower() == user.lower():
+                selected_index = i
+                break
+            if self.template_logins and template_input.lower() == self.template_logins[i].lower():
+                selected_index = i
+                break
+
+        if selected_index is None:
+            messagebox.showerror("Erro", "Selecione um modelo válido da lista!")
+            return
+
+        # Obter a OU do usuário espelho
+        try:
+            template_dn = self.template_dns[selected_index]
+            
+            # Extrair a OU corretamente do DN
+            dn_parts = template_dn.split(',')
+            ou_parts = []
+            dc_parts = []
+            
+            for part in dn_parts:
+                if part.startswith('OU='):
+                    ou_parts.append(part)
+                elif part.startswith('DC='):
+                    dc_parts.append(part)
+            
+            # Juntar OUs com a base do domínio
+            if ou_parts:
+                self.mirror_user_ou = ','.join(ou_parts + dc_parts)
+            else:
+                # Se não encontrar OUs, usar a base do domínio
+                self.mirror_user_ou = ','.join(dc_parts)
+            
+            if not self.mirror_user_ou:
+                messagebox.showerror("Erro", f"Não foi possível obter a OU do usuário espelho '{template_input}'")
+                return
+            
+            # Buscar informações detalhadas do usuário espelho
+            self.conn_mass.search(
+                search_base=template_dn,
+                search_filter='(objectClass=user)',
+                attributes=['objectClass', 'memberOf']
+            )
+            
+            if self.conn_mass.entries:
+                template_entry = self.conn_mass.entries[0]
+                self.template_object_classes = [str(oc) for oc in template_entry.objectClass.values]
+                self.template_member_of = template_entry.memberOf.values if hasattr(template_entry, 'memberOf') else []
+            
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao obter OU do usuário espelho: {e}")
+            return
+
+        self.progress_var.set(0)
+        self.progress_bar["maximum"] = len(self.import_data)
+        self.import_status.config(text="Iniciando importação...", foreground="blue")
+        self.import_results = []
+
+        threading.Thread(target=self._thread_import, daemon=True).start()
+
+    def _thread_import(self):
+        total = len(self.import_data)
+        success, errors = 0, 0
+
+        for i, row in self.import_data.iterrows():
+            result = {"nome": row["Nome"].strip(), "sobrenome": row["Sobrenome"].strip(), "status": "Erro", "erro": ""}
+            
+            try:
+                nome = row["Nome"].strip()
+                sobrenome = row["Sobrenome"].strip()
+                
+                # Validar dados do usuário
+                self.validate_user_data(nome, sobrenome)
+                
+                # Gerar login único
+                full_name = f"{nome} {sobrenome}"
+                login = self.generate_login(full_name)
+                old_login = login
+                
+                # Verificar se login já existe e gerar único se necessário
+                login, old_login = self.generate_unique_login(self.conn_mass, login, old_login)
+                
+                # Criar usuário
+                if self.create_user_in_ou(nome, sobrenome, login, old_login):
+                    success += 1
+                    status = "Sucesso"
+                    result["status"] = "Sucesso"
+                    result["login"] = login
+                    result["old_login"] = old_login
+                else:
+                    errors += 1
+                    status = "Erro"
+                    result["erro"] = "Falha ao criar usuário"
+            except Exception as e:
+                logging.error(f"Erro criando usuário {row}: {e}")
+                errors += 1
+                status = "Erro"
+                result["erro"] = str(e)
+
+            self.import_results.append(result)
+            self.root.after(0, lambda cur=i+1, s=success, er=errors, st=status, idx=i: self._update_progress_and_tree(cur, s, er, total, idx, st))
+
+        self.root.after(0, lambda: self.import_status.config(text="✅ Importação concluída!", foreground="green"))
+        self.root.after(1000, self.show_import_results)
+
+    def _update_progress_and_tree(self, current, success, errors, total, row_index, status):
+        self.progress_var.set(current)
+        self.import_status.config(text=f"Processados: {current}/{total} | Sucessos: {success} | Erros: {errors}", foreground="blue")
+        
+        # Atualize o status na treeview
+        item = self.tree.get_children()[row_index]
+        current_values = self.tree.item(item, 'values')
+        self.tree.item(item, values=(current_values[0], current_values[1], status))
+
+    def generate_login(self, full_name):
+        if not full_name.strip():
+            return ""
+        full_name = unicodedata.normalize('NFD', full_name)
+        full_name = full_name.encode('ascii', 'ignore').decode('utf-8').lower()
+        full_name = re.sub(r'[^a-z\s]', '', full_name)
+        parts = [p for p in full_name.split() if p]
+
+        if not parts:
+            return ""
+
+        first_letter = parts[0][0]
+        login_parts = [first_letter, "_"]
+
+        # Filtrar partes relevantes (ignorar palavras com menos de 3 letras)
+        relevant_parts = [p for p in parts if len(p) >= 3]
+    
+        if not relevant_parts:
+            # Se não há partes relevantes, usa o primeiro nome preenchendo com 'x'
+            base = parts[0].ljust(6, 'x')
+            login_parts.append(base[:3])
+            login_parts.append(base[3:6])
+        elif len(relevant_parts) < 2:
+            # Se há apenas uma parte relevante, usa ela e o primeiro nome
+            base = relevant_parts[0].ljust(6, 'x')
+            login_parts.append(base[:3])
+            login_parts.append(parts[0][:3].ljust(3, 'x'))
+        else:
+            # Usa o primeiro sobrenome relevante e o último sobrenome relevante
+            first_relevant = relevant_parts[1][:3].ljust(3, 'x')
+            last_relevant = relevant_parts[-1][:3].ljust(3, 'x')
+            login_parts.append(first_relevant)
+            login_parts.append(last_relevant)
+
+        return ''.join(login_parts)[:20]
+
+    def generate_unique_login(self, conn, login, old_login):
+        """
+        Garante que logins sejam únicos no AD.
+        Se já existir, acrescenta um número incremental.
+        """
+        unique_login = login
+        unique_old = old_login
+        counter = 1
+
+        while True:
+            search_filter = f"(|(sAMAccountName={unique_old})(userPrincipalName={unique_login}@motivabpo.com.br))"
+            conn.search(search_base=conn.server.info.other['defaultNamingContext'][0],
+                        search_filter=search_filter,
+                        attributes=["distinguishedName"])
+            if not conn.entries:
+                break
+            unique_login = f"{login}{counter}"
+            unique_old = f"{old_login}{counter}"
+            counter += 1
+
+        return unique_login, unique_old
+
+    def create_user_in_ou(self, first_name, last_name, username, old_username):
+        """Cria um usuário na OU especificada"""
+        try:
+            full_name = f"{first_name} {last_name}"
+            
+            # Validar se a OU existe antes de tentar criar o usuário
+            if not self.ou_exists(self.mirror_user_ou):
+                error_msg = f"A OU '{self.mirror_user_ou}' não existe ou não está acessível"
+                logging.error(error_msg)
+                raise Exception(error_msg)
+                
+            # Escapar caracteres especiais no nome
+            escaped_cn = escape_rdn(full_name)
+            new_dn = f"CN={escaped_cn},{self.mirror_user_ou}"
+
+            # Criar usuário com as classes de objeto do usuário espelho
+            attributes = {
+                'objectClass': self.template_object_classes,
+                'cn': full_name,
+                'givenName': first_name,
+                'sn': last_name,
+                'displayName': full_name,
+                'sAMAccountName': old_username,
+                'userPrincipalName': f"{username}@motivabpo.com.br",
+                'mail': f"{username}@motivabpo.com.br",
+                'userAccountControl': 544,  # Conta desativada inicialmente (NORMAL_ACCOUNT + ACCOUNTDISABLE)
+                'name': full_name,
+            }
+
+            if not self.conn_mass.add(dn=new_dn, attributes=attributes):
+                error_msg = f"Erro ao criar usuário: {self.conn_mass.last_error}"
+                logging.error(error_msg)
+                raise Exception(error_msg)
+
+            logging.info(f"Usuário criado: {new_dn}")
+
+            # Definir senha - CORREÇÃO PARA unwillingToPerform
+            # Primeiro, garantir que a conta está desativada antes de definir a senha
+            if not self.conn_mass.modify(new_dn, {'userAccountControl': [(MODIFY_REPLACE, [544])]}):
+                error_msg = f"Erro ao desativar conta: {self.conn_mass.last_error}"
+                logging.error(error_msg)
+                raise Exception(error_msg)
+
+            # Definir a senha (usar uma senha mais complexa)
+            password = "M0tiva@2024!"  # Senha mais complexa que atende às políticas
+            password_value = f'"{password}"'.encode('utf-16-le')
+            
+            if not self.conn_mass.modify(new_dn, {'unicodePwd': [(MODIFY_REPLACE, [password_value])]}):
+                error_msg = f"Erro ao definir senha: {self.conn_mass.last_error}"
+                logging.error(error_msg)
+                
+                # Tentar abordagem alternativa para definir senha
+                try:
+                    # Fechar e reabrir a conexão pode ajudar em alguns casos
+                    self.conn_mass.unbind()
+                    self.conn_mass = conectar_ldap(self.admin_user.get().strip(), self.admin_password.get())
+                    
+                    # Tentar novamente definir a senha
+                    if not self.conn_mass.modify(new_dn, {'unicodePwd': [(MODIFY_REPLACE, [password_value])]}):
+                        raise Exception(f"Erro ao definir senha (segunda tentativa): {self.conn_mass.last_error}")
+                except Exception as e2:
+                    logging.error(f"Erro na segunda tentativa de definir senha: {e2}")
+                    raise Exception(f"Falha ao definir senha após múltiplas tentativas: {e2}")
+
+            # Ativar conta e forçar alteração de senha no primeiro logon
+            if not self.conn_mass.modify(new_dn, {
+                'userAccountControl': [(MODIFY_REPLACE, [66048])],  # NORMAL_ACCOUNT + DONT_EXPIRE_PASSWORD
+                'pwdLastSet': [(MODIFY_REPLACE, [0])]  # Deve alterar senha no próximo logon
+            }):
+                error_msg = f"Erro ao ativar conta: {self.conn_mass.last_error}"
+                logging.error(error_msg)
+                raise Exception(error_msg)
+
+            # Copiar grupos do usuário modelo
+            for grupo_dn in self.template_member_of:
+                if not self.conn_mass.modify(grupo_dn, {'member': [(MODIFY_ADD, [new_dn])]}):
+                    logging.warning(f"Erro ao adicionar usuário ao grupo {grupo_dn}: {self.conn_mass.last_error}")
+
+            return True
+
+        except Exception as e:
+            logging.error(f"Erro ao criar usuário {first_name} {last_name}: {e}")
+            return False
+
+    def show_import_results(self):
+        """Exibe uma janela com os resultados detalhados da importação"""
+        results_window = tk.Toplevel(self.root)
+        results_window.title("Resultados da Importação")
+        results_window.geometry("800x600")
+        results_window.transient(self.root)
+        results_window.grab_set()
+
+        # Frame principal
+        main_frame = ttk.Frame(results_window, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame, text="Resultados da Importação em Massa", font=("Arial", 14)).pack(pady=10)
+
+        # Text area com scroll
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+
+        text_area = scrolledtext.ScrolledText(text_frame, wrap=tk.WORD, width=80, height=25)
+        text_area.pack(fill=tk.BOTH, expand=True)
+
+        # Contadores
+        success_count = sum(1 for r in self.import_results if r["status"] == "Sucesso")
+        error_count = len(self.import_results) - success_count
+
+        # Preencher text area com resultados
+        text_area.insert(tk.END, f"RESUMO DA IMPORTAÇÃO:\n")
+        text_area.insert(tk.END, f"Total de usuários processados: {len(self.import_results)}\n")
+        text_area.insert(tk.END, f"Sucessos: {success_count}\n")
+        text_area.insert(tk.END, f"Erros: {error_count}\n\n")
+        text_area.insert(tk.END, f"OU utilizada: {self.mirror_user_ou}\n\n")
+
+        text_area.insert(tk.END, "DETALHES POR USUÁRIO:\n")
+        text_area.insert(tk.END, "="*80 + "\n")
+
+        for i, result in enumerate(self.import_results, 1):
+            text_area.insert(tk.END, f"{i}. {result['nome']} {result['sobrenome']}: {result['status']}\n")
+            
+            if result["status"] == "Sucesso":
+                text_area.insert(tk.END, f"   Login: {result['login']}@motivabpo.com.br\n")
+                text_area.insert(tk.END, f"   Login antigo: {DOMINIO_AD}\\{result['old_login']}\n")
+                text_area.insert(tk.END, f"   Senha inicial: M0tiva@2024!\n")  # Atualizada para a nova senha
+            else:
+                text_area.insert(tk.END, f"   Erro: {result['erro']}\n")
+            
+            text_area.insert(tk.END, "-"*80 + "\n")
+
+        text_area.config(state=tk.DISABLED)  # Tornar o texto somente leitura
+
+        # Botão de fechar
+        ttk.Button(main_frame, text="Fechar", command=results_window.destroy).pack(pady=10)

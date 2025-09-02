@@ -4,7 +4,7 @@ from frames.dashboard import DashboardFrame
 from frames.individual import IndividualFrame
 from frames.mass_import import MassImportFrame
 from frames.move_users import MoveUsersFrame
-from frames.mass_move import MassUsersFrame
+from frames.mass_move import MassImportFrame
 from frames.settings import SettingsFrame
 from frames.internet import InternetGroupsFrame
 
@@ -32,7 +32,7 @@ class App:
         move_users_tab = MoveUsersFrame(self.notebook, root)
         self.notebook.add(move_users_tab, text="Mover Usuários")
         
-        mass_move_tab = MassUsersFrame(self.notebook, root)
+        mass_move_tab = MassImportFrame(self.notebook, root)
         self.notebook.add(mass_move_tab, text="Movimento em Massa")
 
         internet_tab = InternetGroupsFrame(self.notebook, root)

@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 from ldap3 import MODIFY_ADD, MODIFY_DELETE, MODIFY_REPLACE, SUBTREE
 import threading
 import logging
+from ldap3.utils.conv import escape_filter_chars
 from ldap_utils import conectar_ldap, extract_ou_from_dn, is_account_disabled, obter_configuracao
 
 class PasswordResetDialog(tk.Toplevel):
@@ -12,8 +13,8 @@ class PasswordResetDialog(tk.Toplevel):
         self.geometry("500x300")
         self.resizable(False, False)
         self.username = username
-        self.result = None
-        
+        self.result = None        
+
         self.create_widgets()
         self.grab_set()
         self.focus_force()
@@ -38,7 +39,7 @@ class PasswordResetDialog(tk.Toplevel):
                        variable=self.must_change).pack(anchor=tk.W, padx=20, pady=10)
         
         # Texto informativo
-        ttk.Label(self, text="O usuário deve fazer logoff e fazer logon novamente para que a alteração entre em vigor.", 
+        ttk.Label(self, text="O usuário deve fazer logoff and logon novamente para que a alteração entre em vigor.", 
                  font=("Arial", 8), foreground="gray").pack(anchor=tk.W, padx=20)
         
         # Status de bloqueio
@@ -65,7 +66,7 @@ class PasswordResetDialog(tk.Toplevel):
             return
             
         if new_pwd != confirm_pwd:
-            messagebox.showerror("Erro", "As senha não coincidem")
+            messagebox.showerror("Erro", "As senhas não coincidem")
             return
             
         self.result = {
@@ -86,6 +87,7 @@ class InternetGroupsFrame(ttk.Frame):
         self.user_details = {}
         self.selected_user = None
         self.selected_users_set = set()
+        self.filter_selected = False
         
         # Carrega as configurações iniciais
         self.config = obter_configuracao()
@@ -118,6 +120,7 @@ class InternetGroupsFrame(ttk.Frame):
         
         ttk.Button(search_frame, text="Pesquisar", command=self.load_users).pack(side=tk.LEFT, padx=(5, 0))
         ttk.Button(search_frame, text="Atualizar", command=self.load_users).pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Button(search_frame, text="Limpar Filtro", command=self.clear_filter).pack(side=tk.LEFT, padx=(5, 0))
         
         # Lista de usuários
         user_list_frame = ttk.LabelFrame(self, text="Usuários")
@@ -217,6 +220,10 @@ class InternetGroupsFrame(ttk.Frame):
         cred_frame = ttk.LabelFrame(self, text="Credenciais de Administrador")
         cred_frame.grid(row=11, column=0, columnspan=3, sticky=tk.EW, padx=5, pady=5)
         
+        # Configure column weights for cred_frame
+        cred_frame.columnconfigure(1, weight=1)
+        cred_frame.columnconfigure(3, weight=1)
+        
         ttk.Label(cred_frame, text="Usuário:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
         user_cred_frame = ttk.Frame(cred_frame)
         user_cred_frame.grid(row=0, column=1, sticky=tk.EW, padx=5, pady=5)
@@ -228,10 +235,12 @@ class InternetGroupsFrame(ttk.Frame):
         self.admin_pass = ttk.Entry(cred_frame, width=20, show="*")
         self.admin_pass.grid(row=0, column=3, sticky=tk.EW, padx=5, pady=5)
         
-        ttk.Button(cred_frame, text="Conectar", command=self.verify_credentials).grid(row=0, column=4, padx=5, pady=5)
+        # Fixed: Changed from pack() to grid()
+        ttk.Button(cred_frame, text="Conectar", command=self.verify_credentials).grid(row=0, column=4, padx=5, pady=5, sticky=tk.W)
         
+        # Fixed: Changed from pack() to grid()
         self.status_label = ttk.Label(cred_frame, text="Não conectado", foreground="red")
-        self.status_label.grid(row=0, column=5, padx=5, pady=5)
+        self.status_label.grid(row=0, column=5, padx=5, pady=5, sticky=tk.W)
         
         # Barra de progresso
         self.progress_var = tk.DoubleVar()
@@ -247,6 +256,12 @@ class InternetGroupsFrame(ttk.Frame):
         
         # Carregar grupos de internet conhecidos
         self.load_known_groups()
+    
+    def clear_filter(self):
+        self.filter_selected = False
+        self.tree.heading("selected", text="Selected")  # Resetar texto do cabeçalho
+        self.search_var.set("")
+        self.filter_users()
     
     def filter_groups(self, event):
         combo = event.widget
@@ -271,13 +286,22 @@ class InternetGroupsFrame(ttk.Frame):
     
     def on_tree_click(self, event):
         region = self.tree.identify("region", event.x, event.y)
-        if region == "cell":
+        if region == "heading":
+            col = self.tree.identify_column(event.x)
+            if col == "#1":  
+                self.filter_selected = not self.filter_selected
+                if self.filter_selected:
+                    self.tree.heading("selected", text="✔ Selected")
+                else:
+                    self.tree.heading("selected", text="Selected")
+                self.filter_users()
+        elif region == "cell":
             col = self.tree.identify_column(event.x)
             item = self.tree.identify_row(event.y)
-            if col == "#1" and item:  # Coluna de seleção
+            if col == "#1" and item: 
                 vals = list(self.tree.item(item, "values"))
                 username = vals[1]
-                
+            
                 if vals[0] == "[ ]":
                     vals[0] = "[X]"
                     self.selected_users_set.add(username)
@@ -285,8 +309,13 @@ class InternetGroupsFrame(ttk.Frame):
                     vals[0] = "[ ]"
                     if username in self.selected_users_set:
                         self.selected_users_set.remove(username)
-                
+            
                 self.tree.item(item, values=vals)
+            
+                if self.selected_users_set:
+                    self.tree.heading("selected", text="Selected*")
+                else:
+                    self.tree.heading("selected", text="Selected")
     
     def on_user_select(self, event):
         selection = self.tree.selection()
@@ -303,11 +332,13 @@ class InternetGroupsFrame(ttk.Frame):
         try:
             self.config = obter_configuracao()
             self.base_dn = self.config['BASE_DN']
+
+            escaped_username = escape_filter_chars(username)
             
             # Busca informações detalhadas do usuário
             self.conn.search(
                 self.base_dn, 
-                f"(cn={username})", 
+                f"(cn={escaped_username})", 
                 attributes=['cn', 'distinguishedName', 'userAccountControl', self.internet_group_attribute]
             )
             
@@ -347,16 +378,23 @@ class InternetGroupsFrame(ttk.Frame):
         term = self.search_var.get().lower()
         search_type = self.search_type.get()
         self.tree.delete(*self.tree.get_children())
+
+        # Determina a lista base para filtrar
+        if self.filter_selected:
+            base_list = [u for u in self.all_users if u[0] in self.selected_users_set]
+        else:
+            base_list = self.all_users
         
+        # Aplica o filtro de texto se houver termo
         if term:
             if search_type == "Nome":
-                # Filtra pelo nome (cn)
-                filtered = [u for u in self.all_users if term in u[0].lower()]
+                filtered = [u for u in base_list if term in u[0].lower()]
             else:  # Pesquisa por Usuário (sAMAccountName)
-                filtered = [u for u in self.all_users if term in u[1].lower()]
+                filtered = [u for u in base_list if term in u[1].lower()]
         else:
-            filtered = self.all_users
-        
+            filtered = base_list
+
+        # Preenche a treeview
         for cn, sam, ou, status, is_disabled, groups in filtered:
             selected_mark = "[X]" if cn in self.selected_users_set else "[ ]"
             tag = "disabled" if is_disabled else "active"
@@ -527,8 +565,9 @@ class InternetGroupsFrame(ttk.Frame):
                 self.base_dn,
                 'OU=Grupos_Fortigate,OU=MOTIVA,DC=motiva,DC=matriz'
             ]
-        
-            search_filter = f"(|(cn={group_name})(sAMAccountName={group_name}))"
+
+            escaped_group_name = escape_filter_chars(group_name)
+            search_filter = f"(|(cn={escaped_group_name})(sAMAccountName={escaped_group_name}))"
 
             for search_base in search_bases:
                 if not search_base:
@@ -762,9 +801,11 @@ class InternetGroupsFrame(ttk.Frame):
             return self.user_details[username]['dn']
         
         try:
+
+            escaped_username = escape_filter_chars(username)
             self.conn.search(
                 self.base_dn,
-                f"(cn={username})",
+                f"(cn={escaped_username})",
                 attributes=['distinguishedName']
             )
             if self.conn.entries:
@@ -864,9 +905,10 @@ class InternetGroupsFrame(ttk.Frame):
 
     def _get_user_internet_groups(self, username):
         try:
+            escaped_username = escape_filter_chars(username)
             self.conn.search(
                 self.base_dn,
-                f"(cn={username})",
+                f"(cn={escaped_username})",
                 attributes=[self.internet_group_attribute]
             )
             if self.conn.entries:
