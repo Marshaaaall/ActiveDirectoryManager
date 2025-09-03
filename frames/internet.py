@@ -10,7 +10,7 @@ class PasswordResetDialog(tk.Toplevel):
     def __init__(self, parent, username):
         super().__init__(parent)
         self.title(f"Redefinir senha - {username}")
-        self.geometry("500x300")
+        self.geometry("500x450")
         self.resizable(False, False)
         self.username = username
         self.result = None        

@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import logging
+from ldap3.utils.conv import escape_filter_chars
 from ldap_utils import conectar_ldap, extract_ou_from_dn, is_account_disabled, move_user, obter_configuracao
 
 class MoveUsersFrame(ttk.Frame):
@@ -187,7 +188,8 @@ class MoveUsersFrame(ttk.Frame):
         self.progress_bar["maximum"] = total
         for i,cn in enumerate(users):
             try:
-                self.conn_move.search(self.base_dn,f"(cn={cn})",attributes=['distinguishedName'], size_limit=1)
+                escaped_cn = escape_filter_chars(cn)
+                self.conn_move.search(self.base_dn,f"(cn={escaped_cn})",attributes=['distinguishedName'], size_limit=1)
                 if not self.conn_move.entries:
                     raise Exception("Usuário não encontrado")
                 user_dn = self.conn_move.entries[0].distinguishedName.value
@@ -229,7 +231,8 @@ class MoveUsersFrame(ttk.Frame):
 
         for i, cn in enumerate(users):
             try:
-                self.conn_move.search(self.base_dn, f"(cn={cn})", attributes=['distinguishedName'], size_limit=1)
+                escaped_cn = escape_filter_chars(cn)
+                self.conn_move.search(self.base_dn, f"(cn={escaped_cn})", attributes=['distinguishedName'], size_limit=1)
                 if not self.conn_move.entries:
                     raise Exception("Usuário não encontrado")
                 user_dn = self.conn_move.entries[0].distinguishedName.value

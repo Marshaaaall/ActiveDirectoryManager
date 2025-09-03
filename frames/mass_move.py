@@ -467,23 +467,21 @@ class MassImportFrame(ttk.Frame):
                 error_msg = f"Erro ao definir senha: {self.conn_mass.last_error}"
                 logging.error(error_msg)
                 
-                # Tentar abordagem alternativa para definir senha
                 try:
-                    # Fechar e reabrir a conexão pode ajudar em alguns casos
+                   
                     self.conn_mass.unbind()
                     self.conn_mass = conectar_ldap(self.admin_user.get().strip(), self.admin_password.get())
                     
-                    # Tentar novamente definir a senha
                     if not self.conn_mass.modify(new_dn, {'unicodePwd': [(MODIFY_REPLACE, [password_value])]}):
                         raise Exception(f"Erro ao definir senha (segunda tentativa): {self.conn_mass.last_error}")
                 except Exception as e2:
                     logging.error(f"Erro na segunda tentativa de definir senha: {e2}")
                     raise Exception(f"Falha ao definir senha após múltiplas tentativas: {e2}")
 
-            # Ativar conta e forçar alteração de senha no primeiro logon
+
             if not self.conn_mass.modify(new_dn, {
-                'userAccountControl': [(MODIFY_REPLACE, [66048])],  # NORMAL_ACCOUNT + DONT_EXPIRE_PASSWORD
-                'pwdLastSet': [(MODIFY_REPLACE, [0])]  # Deve alterar senha no próximo logon
+                'userAccountControl': [(MODIFY_REPLACE, [66048])], 
+                'pwdLastSet': [(MODIFY_REPLACE, [0])]  
             }):
                 error_msg = f"Erro ao ativar conta: {self.conn_mass.last_error}"
                 logging.error(error_msg)
